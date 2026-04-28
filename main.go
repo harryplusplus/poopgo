@@ -359,15 +359,27 @@ func (m *model) streamResponse() {
 		return
 	}
 
-	// Parse SSE stream line by line.
-	scanner := bufio.NewScanner(resp.Body)
-	// Increase buffer for long lines (some providers send large chunks).
+	onToken := func(token string) {
+		m.program.Send(streamChunkMsg(token))
+	}
+	if err := parseSSEStream(resp.Body, onToken); err != nil {
+		m.program.Send(streamDoneMsg{err: fmt.Errorf("read stream: %w", err)})
+		return
+	}
+
+	m.program.Send(streamDoneMsg{})
+}
+
+// parseSSEStream reads an SSE (Server-Sent Events) stream from r and calls
+// onToken for each content delta found in the "data:" lines.  It is extracted
+// for testability.
+func parseSSEStream(r io.Reader, onToken func(string)) error {
+	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// SSE lines start with "data: ".
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
@@ -378,19 +390,14 @@ func (m *model) streamResponse() {
 
 		var chunk streamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue // skip unparseable chunks gracefully
+			continue
 		}
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			m.program.Send(streamChunkMsg(chunk.Choices[0].Delta.Content))
+			onToken(chunk.Choices[0].Delta.Content)
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		m.program.Send(streamDoneMsg{err: fmt.Errorf("read stream: %w", err)})
-		return
-	}
-
-	m.program.Send(streamDoneMsg{})
+	return scanner.Err()
 }
 
 // ---------------------------------------------------------------------------
