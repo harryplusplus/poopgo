@@ -13,7 +13,7 @@ func main() {
 	_ = godotenv.Load()
 
 	apiKey := os.Getenv("POOPGO_API_KEY")
-	apiBase := os.Getenv("POOPGO_API_BASE")
+	apiBase := os.Getenv("POOPGO_BASE_URL")
 	if apiBase == "" {
 		apiBase = "https://api.openai.com/v1"
 	}
