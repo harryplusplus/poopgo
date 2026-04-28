@@ -22,12 +22,22 @@ func main() {
 		chatModel = "gpt-4o"
 	}
 
+	// Provider selection: POOPGO_PROVIDER=test → fake (no API calls),
+	// anything else → real HTTP API.
+	provider := os.Getenv("POOPGO_PROVIDER")
+	var streamProvider app.StreamProvider
+	if provider == "test" {
+		streamProvider = app.NewTestProvider()
+	} else {
+		streamProvider = app.NewRealProvider(apiKey, apiBase)
+	}
+
 	var initErr string
-	if apiKey == "" {
+	if apiKey == "" && provider != "test" {
 		initErr = "POOPGO_API_KEY not set. Set it in your environment or .env file."
 	}
 
-	m := app.NewModel(apiKey, apiBase, chatModel, initErr)
+	m := app.NewModel(apiKey, apiBase, chatModel, initErr, streamProvider)
 	p := tea.NewProgram(
 		m,
 		tea.WithAltScreen(),

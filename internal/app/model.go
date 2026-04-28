@@ -1,11 +1,7 @@
 package app
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -50,6 +46,7 @@ type Model struct {
 	apiKey    string
 	apiBase   string
 	chatModel string
+	provider  StreamProvider
 
 	// Layout
 	width  int
@@ -75,7 +72,7 @@ var defaultCommands = []commandItem{
 
 // NewModel creates a Model with the given configuration.  Call SetProgram
 // after tea.NewProgram to enable streaming.
-func NewModel(apiKey, apiBase, chatModel, initErr string) *Model {
+func NewModel(apiKey, apiBase, chatModel, initErr string, provider StreamProvider) *Model {
 	ta := textarea.New()
 	ta.Placeholder = "Message… (/ for commands, Enter to send, Shift+Enter for newline)"
 	ta.CharLimit = 8000
@@ -95,6 +92,7 @@ func NewModel(apiKey, apiBase, chatModel, initErr string) *Model {
 		apiBase:   apiBase,
 		chatModel: chatModel,
 		initErr:   initErr,
+		provider:  provider,
 		messages:  make([]Message, 0),
 		commands:  defaultCommands,
 	}
@@ -472,48 +470,12 @@ func (m *Model) renderCommandPalette() string {
 }
 
 func (m *Model) streamResponse() {
-	payload := chatRequest{
-		Model:    m.chatModel,
-		Messages: m.messages[:len(m.messages)-1],
-		Stream:   true,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		m.program.Send(StreamDoneMsg{Err: fmt.Errorf("marshal request: %w", err)})
+	if m.program == nil {
 		return
 	}
-
-	url := strings.TrimRight(m.apiBase, "/") + "/chat/completions"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		m.program.Send(StreamDoneMsg{Err: fmt.Errorf("create request: %w", err)})
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+m.apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		m.program.Send(StreamDoneMsg{Err: fmt.Errorf("http request: %w", err)})
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		m.program.Send(StreamDoneMsg{
-			Err: fmt.Errorf("API returned %d: %s", resp.StatusCode, string(errBody)),
-		})
-		return
-	}
-
 	onToken := func(token string) {
 		m.program.Send(StreamChunkMsg(token))
 	}
-	if err := parseSSEStream(resp.Body, onToken); err != nil {
-		m.program.Send(StreamDoneMsg{Err: fmt.Errorf("read stream: %w", err)})
-		return
-	}
-
-	m.program.Send(StreamDoneMsg{})
+	err := m.provider.Stream(m.messages[:len(m.messages)-1], m.chatModel, onToken)
+	m.program.Send(StreamDoneMsg{Err: err})
 }
