@@ -14,6 +14,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// commandItem is a single entry in the slash-command palette.
+type commandItem struct {
+	command     string // e.g. "/scroll-down"
+	description string // e.g. "Page down"
+}
+
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
@@ -51,13 +57,27 @@ type Model struct {
 
 	// Error to display once
 	initErr string
+
+	// Command palette (triggered by "/" at start)
+	commandMode      bool
+	commands         []commandItem
+	filteredCommands []commandItem
+	selectedCmd      int
+}
+
+var defaultCommands = []commandItem{
+	{"/help", "Show available commands"},
+	{"/scroll-up", "Page up"},
+	{"/scroll-down", "Page down"},
+	{"/scroll-top", "Scroll to top"},
+	{"/scroll-bottom", "Scroll to bottom"},
 }
 
 // NewModel creates a Model with the given configuration.  Call SetProgram
 // after tea.NewProgram to enable streaming.
 func NewModel(apiKey, apiBase, chatModel, initErr string) *Model {
 	ta := textarea.New()
-	ta.Placeholder = "Message… (Enter to send, Shift+Enter for newline)"
+	ta.Placeholder = "Message… (/ for commands, Enter to send, Shift+Enter for newline)"
 	ta.CharLimit = 8000
 	ta.SetHeight(3)
 	ta.ShowLineNumbers = false
@@ -76,6 +96,7 @@ func NewModel(apiKey, apiBase, chatModel, initErr string) *Model {
 		chatModel: chatModel,
 		initErr:   initErr,
 		messages:  make([]Message, 0),
+		commands:  defaultCommands,
 	}
 	m.refreshViewport()
 	return m
@@ -111,9 +132,27 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 
 	case tea.KeyMsg:
+		if m.handleCommandMode(msg) {
+			m.refreshViewport()
+			return m, nil
+		}
+
 		switch msg.String() {
 
-		case "ctrl+c", "esc":
+		case "ctrl+c":
+			if m.commandMode {
+				m.exitCommandMode()
+				m.refreshViewport()
+				return m, nil
+			}
+			return m, tea.Quit
+
+		case "esc":
+			if m.commandMode {
+				m.exitCommandMode()
+				m.refreshViewport()
+				return m, nil
+			}
 			return m, tea.Quit
 
 		case "enter":
@@ -123,6 +162,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			input := strings.TrimSpace(m.textarea.Value())
 			if input == "" {
 				break
+			}
+			if strings.HasPrefix(input, "/") {
+				m.executeCommand(input)
+				m.textarea.Reset()
+				m.exitCommandMode()
+				m.refreshViewport()
+				return m, nil
 			}
 			if m.apiKey == "" {
 				m.appendSystem("⚠️  POOPGO_API_KEY is not set.")
@@ -154,7 +200,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.streaming {
 				var cmd tea.Cmd
 				m.textarea, cmd = m.textarea.Update(msg)
-				cmds = append(cmds, cmd)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				// Check if textarea now starts with "/"
+				m.updateCommandMode()
 			}
 		}
 
@@ -198,10 +248,17 @@ func (m *Model) View() string {
 	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(sep)
 	status := m.statusLine()
 
+	// In command mode, show palette above the separator
+	palette := ""
+	if m.commandMode {
+		palette = m.renderCommandPalette() +
+			"\n"
+	}
+
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		m.viewport.View(),
-		sepStyle,
+		palette+sepStyle,
 		m.textarea.View(),
 		status,
 	)
@@ -269,6 +326,149 @@ func (m *Model) refreshViewport() {
 
 func (m *Model) appendSystem(text string) {
 	m.messages = append(m.messages, Message{Role: "system", Content: text})
+}
+
+// ---------------------------------------------------------------------------
+// Command palette
+// ---------------------------------------------------------------------------
+
+// handleCommandMode handles key events when the command palette is active.
+// Returns true if the event was consumed.
+func (m *Model) handleCommandMode(msg tea.KeyMsg) bool {
+	if !m.commandMode {
+		return false
+	}
+
+	switch msg.String() {
+	case "esc", "ctrl+c":
+		m.exitCommandMode()
+		return true
+
+	case "enter":
+		// Execute selected command
+		if len(m.filteredCommands) > 0 && m.selectedCmd < len(m.filteredCommands) {
+			m.executeCommand(m.filteredCommands[m.selectedCmd].command)
+			m.textarea.Reset()
+			m.exitCommandMode()
+		}
+		return true
+
+	case "up":
+		if m.selectedCmd > 0 {
+			m.selectedCmd--
+		}
+		return true
+
+	case "down":
+		if m.selectedCmd < len(m.filteredCommands)-1 {
+			m.selectedCmd++
+		}
+		return true
+
+	default:
+		// Pass to textarea for typing, then update filter
+		m.textarea, _ = m.textarea.Update(msg)
+		m.updateCommandMode()
+		return true
+	}
+}
+
+// updateCommandMode checks the textarea value and updates the command palette.
+func (m *Model) updateCommandMode() {
+	val := m.textarea.Value()
+
+	if !strings.HasPrefix(val, "/") {
+		m.exitCommandMode()
+		return
+	}
+
+	m.commandMode = true
+
+	// Filter commands by prefix
+	m.filteredCommands = nil
+	m.selectedCmd = 0
+	for _, c := range m.commands {
+		if strings.HasPrefix(c.command, val) || strings.Contains(c.description, strings.TrimPrefix(val, "/")) {
+			m.filteredCommands = append(m.filteredCommands, c)
+		}
+	}
+	if len(m.filteredCommands) == 0 {
+		m.filteredCommands = m.commands
+	}
+}
+
+// exitCommandMode exits the command palette and resets state.
+func (m *Model) exitCommandMode() {
+	m.commandMode = false
+	m.filteredCommands = nil
+	m.selectedCmd = 0
+	if strings.HasPrefix(m.textarea.Value(), "/") {
+		m.textarea.Reset()
+	}
+}
+
+// executeCommand runs a slash command locally.
+func (m *Model) executeCommand(input string) {
+	switch input {
+	case "/help":
+		var sb strings.Builder
+		sb.WriteString("Available commands:\n")
+		for _, c := range m.commands {
+			sb.WriteString(fmt.Sprintf("  %-20s %s\n", c.command, c.description))
+		}
+		m.appendSystem(sb.String())
+
+	case "/scroll-up":
+		m.viewport.ViewUp()
+
+	case "/scroll-down":
+		m.viewport.ViewDown()
+
+	case "/scroll-top":
+		m.viewport.GotoTop()
+
+	case "/scroll-bottom":
+		m.viewport.GotoBottom()
+
+	default:
+		m.appendSystem(fmt.Sprintf("Unknown command: %s (type /help for commands)", input))
+	}
+}
+
+// renderCommandPalette renders the command palette popup overlay.
+func (m *Model) renderCommandPalette() string {
+	cmdStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("12"))
+	descStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8"))
+	selectedStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("8")).
+		Foreground(lipgloss.Color("15"))
+
+	var sb strings.Builder
+	sb.WriteString("  Commands:\n")
+
+	for i, c := range m.filteredCommands {
+		prefix := "  "
+		if i == m.selectedCmd {
+			prefix = "▸ "
+			sb.WriteString(prefix)
+			sb.WriteString(selectedStyle.Render(fmt.Sprintf("%-22s", c.command)))
+			sb.WriteString(" ")
+			sb.WriteString(selectedStyle.Render(c.description))
+		} else {
+			sb.WriteString(prefix)
+			sb.WriteString(cmdStyle.Render(fmt.Sprintf("%-22s", c.command)))
+			sb.WriteString(" ")
+			sb.WriteString(descStyle.Render(c.description))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Add a closing border line
+	sb.WriteString("  ── Esc to close ──")
+
+	return sb.String()
 }
 
 func (m *Model) streamResponse() {

@@ -76,9 +76,24 @@ go run ./cmd/poopgo
 |---------------|----------------------|
 | `Enter`       | Send message         |
 | `Shift+Enter` | Newline              |
-| `Esc` / `Ctrl+C` | Quit              |
+| `Esc` / `Ctrl+C` | Quit / Close palette|
 | `↑` / `↓`     | Scroll chat history  |
-| `PgUp` / `PgDn` | Page scroll        |
+| `PgUp` / `PgDn` | Page scroll (classic)|
+| `/`           | Command palette      |
+
+### Slash Commands
+
+Type `/` at the start of a message to open the command palette:
+
+| Command          | Description         |
+|------------------|---------------------|
+| `/help`          | Show all commands   |
+| `/scroll-up`     | Page up             |
+| `/scroll-down`   | Page down           |
+| `/scroll-top`    | Scroll to top       |
+| `/scroll-bottom` | Scroll to bottom    |
+
+Use `↑`/`↓` to navigate, `Enter` to select, `Esc` to close.
 
 ## Running Tests
 
