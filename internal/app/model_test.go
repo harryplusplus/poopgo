@@ -12,7 +12,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func newTestModel() *Model {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", NewTestProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", NewFakeProvider())
 	m.width = 100
 	m.height = 30
 	return m

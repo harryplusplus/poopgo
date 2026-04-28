@@ -44,7 +44,7 @@ go build -o poopgo ./cmd/poopgo
 | `POOPGO_API_KEY`   | *(required)*                   | Your API key                         |
 | `POOPGO_BASE_URL`  | `https://api.openai.com/v1`    | Base URL of the chat completions API |
 | `POOPGO_MODEL`     | `gpt-4o`                       | Model name                           |
-| `POOPGO_PROVIDER`  | *(empty → real API)*           | `"test"` for fake provider (no API)  |
+| `POOPGO_PROVIDER`  | *(empty → real API)*           | `"fake"` for fake provider (no API)  |
 
 All can be set via environment variables or a `.env` file.
 
@@ -71,9 +71,9 @@ export POOPGO_BASE_URL="http://localhost:1234/v1"
 go run ./cmd/poopgo
 ```
 
-**Test mode (no API):**
+**Fake provider (no API):**
 ```bash
-export POOPGO_PROVIDER="test"
+export POOPGO_PROVIDER="fake"
 go run ./cmd/poopgo
 ```
 

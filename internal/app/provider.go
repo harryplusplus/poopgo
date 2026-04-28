@@ -66,29 +66,29 @@ func (p *RealProvider) Stream(messages []Message, model string, onToken func(str
 }
 
 // ---------------------------------------------------------------------------
-// TestProvider — fake provider for testing without API calls
+// FakeProvider — fake provider for testing without API calls
 // ---------------------------------------------------------------------------
 
-// TestProvider is a fake StreamProvider that returns canned responses.
+// FakeProvider is a fake StreamProvider that returns canned responses.
 // No HTTP calls are made; useful for testing the TUI without an API key or network.
-type TestProvider struct{}
+type FakeProvider struct{}
 
-// NewTestProvider creates a TestProvider.
-func NewTestProvider() *TestProvider {
-	return &TestProvider{}
+// NewFakeProvider creates a FakeProvider.
+func NewFakeProvider() *FakeProvider {
+	return &FakeProvider{}
 }
 
 // Stream implements StreamProvider by echoing the last user message with a
-// test-provider banner. Each character is emitted as a separate token to
+// fake-provider banner. Each character is emitted as a separate token to
 // exercise the streaming path.
-func (p *TestProvider) Stream(messages []Message, model string, onToken func(string)) error {
-	echo := "🧪 [TEST PROVIDER] "
+func (p *FakeProvider) Stream(messages []Message, model string, onToken func(string)) error {
+	echo := "🧪 [FAKE PROVIDER] "
 	if len(messages) > 0 {
 		echo += "Echo: " + messages[len(messages)-1].Content
 	} else {
 		echo += "No input."
 	}
-	echo += "\n\nPOOPGO_PROVIDER=test → using fake provider (no API calls)."
+	echo += "\n\nPOOPGO_PROVIDER=fake → using fake provider (no API calls)."
 
 	for _, ch := range echo {
 		onToken(string(ch))

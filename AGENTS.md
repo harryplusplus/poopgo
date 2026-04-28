@@ -16,7 +16,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `cmd/poopgo/main.go`       진입점 — godotenv로 환경변수 로드, provider 선택, Bubble Tea Program 생성
 - `internal/app/model.go`    메인 Model (viewport, textarea, messages, command palette)
 - `internal/app/api.go`      타입 정의 (Message, chatRequest), SSE 스트리밍 파싱
-- `internal/app/provider.go` StreamProvider 인터페이스 + RealProvider + TestProvider
+- `internal/app/provider.go` StreamProvider 인터페이스 + RealProvider + FakeProvider
 
 ## Runtime Config
 | Variable           | Default                     |
@@ -28,7 +28,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 
 `.env` 파일로도 설정 가능.
 
-`POOPGO_PROVIDER=test` → TestProvider 사용. API 호출 없이 마지막 메시지를 echo.
+`POOPGO_PROVIDER=fake` → FakeProvider 사용. API 호출 없이 마지막 메시지를 echo.
 그 외 값이거나 미설정 → RealProvider (실제 HTTP API 호출).
 
 ## Key Patterns
@@ -41,7 +41,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 ## Provider Architecture
 - `StreamProvider` interface: `Stream(messages, model, onToken) error`
 - `RealProvider`: OpenAI 호환 `/chat/completions` API에 HTTP POST → SSE 파싱
-- `TestProvider`: fake — 마지막 user message를 echo, API 호출 없음
+- `FakeProvider`: fake — 마지막 user message를 echo, API 호출 없음
 - `main.go`에서 `POOPGO_PROVIDER` env var에 따라 provider 선택
 - Model은 provider만 바라보고, HTTP/SSE 디테일을 모름
 
