@@ -7,6 +7,11 @@ poopgo
 PoopGo — Bubble Tea 기반 터미널 AI 채팅 클라이언트.
 OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 
+## File Inventory
+작업 시작 전에 두 파일을 모두 읽을 것:
+- **`README.md`** — 사용자 대상 문서. 기능, 설정, 키바인딩, 실행 예제, 테스트 방법이 기술되어 있다. 프로젝트의 겉모습을 이해하는 데 필수.
+- **`AGENTS.md`** (이 파일) — AI 작업자 대상 문서. 구조, 패턴, 제약사항, 테스트 가이드가 기술되어 있다. 코드 수정/작성 시 참고.
+
 ## Commands
 - `go build ./...`        빌드
 - `go run ./cmd/poopgo`   실행 (fake provider: `POOPGO_PROVIDER=fake go run ./cmd/poopgo`)
