@@ -137,8 +137,8 @@ func TestUpdate_windowSize(t *testing.T) {
 	if updated.viewport.Width != 120 {
 		t.Errorf("viewport width = %d", updated.viewport.Width)
 	}
-	if updated.viewport.Height != 36 {
-		t.Errorf("viewport height = %d", updated.viewport.Height)
+	if updated.viewport.Height != 35 {
+		t.Errorf("viewport height = %d, want 35 (40-5)", updated.viewport.Height)
 	}
 }
 
@@ -308,6 +308,157 @@ func TestView_normalState(t *testing.T) {
 // ---------------------------------------------------------------------------
 // appendSystem
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Keyboard input flow
+// ---------------------------------------------------------------------------
+
+func TestTextareaStartsFocused(t *testing.T) {
+	m := newTestModel()
+	if !m.textarea.Focused() {
+		t.Error("textarea should be focused initially")
+	}
+}
+
+func TestTypeCharacters(t *testing.T) {
+	m := newTestModel()
+
+	// Type 'h'
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	if m.textarea.Value() != "h" {
+		t.Errorf("value = %q, want %q", m.textarea.Value(), "h")
+	}
+
+	// Type 'i'
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	if m.textarea.Value() != "hi" {
+		t.Errorf("value = %q, want %q", m.textarea.Value(), "hi")
+	}
+}
+
+func TestBackspace(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("hello")
+
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	if m.textarea.Value() != "hell" {
+		t.Errorf("value = %q, want %q", m.textarea.Value(), "hell")
+	}
+}
+
+func TestAltEnterInsertsNewline(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("line1")
+
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	if m.textarea.Value() != "line1\n" {
+		t.Errorf("value = %q, want %q", m.textarea.Value(), "line1\n")
+	}
+}
+
+func TestAltEnterBlockedWhileStreaming(t *testing.T) {
+	m := newTestModel()
+	m.streaming = true
+	m.textarea.SetValue("line1")
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	_ = cmd
+	if m.textarea.Value() != "line1" {
+		t.Errorf("value should not change while streaming, got %q", m.textarea.Value())
+	}
+}
+
+func TestCommandModeActivates(t *testing.T) {
+	m := newTestModel()
+
+	// Type '/'
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	if !m.commandMode {
+		t.Error("command mode should activate on '/'")
+	}
+	if m.textarea.Value() != "/" {
+		t.Errorf("value = %q, want %q", m.textarea.Value(), "/")
+	}
+
+	// Type 'h' → value becomes "/h", still starts with /
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	if !m.commandMode {
+		t.Error("command mode should stay active for '/h'")
+	}
+	if len(m.filteredCommands) == 0 {
+		t.Error("filteredCommands should not be empty")
+	}
+
+	// Clear the '/' → command mode deactivates
+	m.textarea.SetValue("hello")
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'!'}})
+	if m.commandMode {
+		t.Error("command mode should deactivate when value doesn't start with '/'")
+	}
+
+	// Re-type '/' + 'h' + 'e' + 'l' + 'p' → command mode, filter narrows
+	m.textarea.SetValue("/help")
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	// Value is "/helpx", still starts with /
+	if !m.commandMode {
+		t.Error("command mode should stay active for /helpx")
+	}
+	if len(m.filteredCommands) == 0 {
+		t.Error("filteredCommands should fall back to all commands when no match")
+	}
+}
+
+func TestCommandModeExecutesHelp(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("/help")
+	m.updateCommandMode() // populate filteredCommands
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_ = cmd
+
+	if m.commandMode {
+		t.Error("command mode should exit after executing")
+	}
+	if m.textarea.Value() != "" {
+		t.Error("textarea should be reset after command execution")
+	}
+	hasHelp := false
+	for _, msg := range m.messages {
+		if msg.Role == "system" && strings.Contains(msg.Content, "Available commands") {
+			hasHelp = true
+		}
+	}
+	if !hasHelp {
+		t.Error("expected /help output in system message")
+	}
+}
+
+func TestTypingNotBlocked(t *testing.T) {
+	// End-to-end: type message, submit, verify
+	m := newTestModel()
+
+	// Type message character by character
+	for _, r := range "hello world" {
+		_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	if m.textarea.Value() != "hello world" {
+		t.Errorf("value = %q, want %q", m.textarea.Value(), "hello world")
+	}
+
+	// Submit
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if m.textarea.Value() != "" {
+		t.Error("textarea should be cleared after submit")
+	}
+	if !m.streaming {
+		t.Error("should be streaming after submit")
+	}
+	if len(m.messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	}
+}
 
 func TestAppendSystem(t *testing.T) {
 	m := newTestModel()

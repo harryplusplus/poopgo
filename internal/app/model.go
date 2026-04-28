@@ -74,13 +74,14 @@ var defaultCommands = []commandItem{
 // after tea.NewProgram to enable streaming.
 func NewModel(apiKey, apiBase, chatModel, initErr string, provider StreamProvider) *Model {
 	ta := textarea.New()
-	ta.Placeholder = "Message… (/ for commands, Enter to send, Shift+Enter for newline)"
+	ta.Placeholder = "Message… (/ for commands, Enter to send, Alt+Enter for newline)"
 	ta.CharLimit = 8000
 	ta.SetHeight(3)
 	ta.ShowLineNumbers = false
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("12"))
 	ta.KeyMap.InsertNewline.SetEnabled(false)
+	ta.Focus()
 
 	vp := viewport.New(80, 20)
 	vp.KeyMap = viewport.KeyMap{}
@@ -126,7 +127,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport.Width = msg.Width
 		m.textarea.SetWidth(msg.Width)
-		m.viewport.Height = msg.Height - 4
+		m.viewport.Height = msg.Height - 5 // separator(1) + textarea(3) + status(1)
 		m.refreshViewport()
 
 	case tea.KeyMsg:
@@ -187,11 +188,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			go m.streamResponse()
 			return m, nil
 
-		case "shift+enter":
+		case "alt+enter":
 			if !m.streaming {
-				var cmd tea.Cmd
-				m.textarea, cmd = m.textarea.Update(msg)
-				cmds = append(cmds, cmd)
+				m.textarea.SetValue(m.textarea.Value() + "\n")
+				m.textarea, _ = m.textarea.Update(msg)
 			}
 
 		default:
