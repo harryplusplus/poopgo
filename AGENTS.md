@@ -104,6 +104,13 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `updateCommandMode()`가 textarea 값 기반으로 `filteredCommands` 필터링
 - `executeCommand()`가 실제 동작 수행 (viewport `PageUp()`/`PageDown()` 호출 — v2에서 `ViewUp()`/`ViewDown()`이 `PageUp()`/`PageDown()`으로 변경됨)
 
+### Command Palette Rendering
+- `renderCommandPalette()` — dark background panel (`Background("236")`) + `Width(m.width)` → solid block visually separate from viewport
+- Header: bold accent color (12), footer: dim (8)
+- Selected item: bright black bg (100) + white fg (97); desc: light gray (7) on dark bg for readability
+- Pattern: build `[]string` lines, join with `"\n"`, wrap in `panelStyle.Render()` — lipgloss inner bg overrides outer per cell, ANSI reset resumes outer
+- Regression test: verify exact ANSI sequences (`48;5;236` for panel bg, `97;100m` for selected) — lipgloss renders 0-15 colors as basic SGR codes, not 256-color format
+
 ## Dependencies
 | Module | Version | Usage |
 |---|---|---|
