@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -281,6 +282,59 @@ func TestUpdate_streamDoneMsg_withError(t *testing.T) {
 	}
 	if !hasErr {
 		t.Errorf("expected system error message, got: %+v", m.messages)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Spinner
+// ---------------------------------------------------------------------------
+
+func TestSpinner_tickCommandOnEnter(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("hello")
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if cmd == nil {
+		t.Fatal("expected spinner tick command on enter")
+	}
+	// Verify the command produces a TickMsg
+	msg := cmd()
+	if _, ok := msg.(spinner.TickMsg); !ok {
+		t.Errorf("expected spinner.TickMsg, got %T", msg)
+	}
+}
+
+func TestSpinner_tickContinuesWhileStreaming(t *testing.T) {
+	m := newTestModel()
+	m.streaming = true
+
+	_, cmd := m.Update(spinner.TickMsg{})
+	if cmd == nil {
+		t.Error("expected tick command while streaming")
+	}
+}
+
+func TestSpinner_tickStopsWhenNotStreaming(t *testing.T) {
+	m := newTestModel()
+	m.streaming = false
+
+	_, cmd := m.Update(spinner.TickMsg{})
+	if cmd != nil {
+		t.Error("expected no tick command when not streaming")
+	}
+}
+
+func TestSpinner_stopsOnStreamDoneMsg(t *testing.T) {
+	m := newTestModel()
+	m.streaming = true
+
+	// After StreamDoneMsg, streaming should be false
+	_, _ = m.Update(StreamDoneMsg{})
+
+	// Subsequent tick should not produce a command
+	_, cmd := m.Update(spinner.TickMsg{})
+	if cmd != nil {
+		t.Error("expected no tick command after StreamDoneMsg")
 	}
 }
 
