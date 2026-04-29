@@ -485,38 +485,48 @@ func (m *Model) executeCommand(input string) {
 
 // renderCommandPalette renders the command palette popup overlay.
 func (m *Model) renderCommandPalette() string {
+	// Panel styling — dark background to visually separate from viewport content.
+	panelStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("236")).
+		Width(m.width)
+
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("12")).
+		Bold(true)
+
 	cmdStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("12"))
 	descStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8"))
+		Foreground(lipgloss.Color("7")) // light gray on dark bg for readability
 	selectedStyle := lipgloss.NewStyle().
 		Background(lipgloss.Color("8")).
 		Foreground(lipgloss.Color("15"))
 
-	var sb strings.Builder
-	sb.WriteString("  Commands:\n")
+	var lines []string
+
+	// Header with accent color
+	lines = append(lines, headerStyle.Render(" ▔▔▔ Commands ▔▔▔"))
 
 	for i, c := range m.filteredCommands {
-		prefix := "  "
 		if i == m.selectedCmd {
-			prefix = "▸ "
-			sb.WriteString(prefix)
-			sb.WriteString(selectedStyle.Render(fmt.Sprintf("%-22s", c.command)))
-			sb.WriteString(" ")
-			sb.WriteString(selectedStyle.Render(c.description))
+			lines = append(lines,
+				selectedStyle.Render("▸ "+fmt.Sprintf("%-22s", c.command)+" "+c.description))
 		} else {
-			sb.WriteString(prefix)
-			sb.WriteString(cmdStyle.Render(fmt.Sprintf("%-22s", c.command)))
-			sb.WriteString(" ")
-			sb.WriteString(descStyle.Render(c.description))
+			cmd := cmdStyle.Render(fmt.Sprintf("%-22s", c.command))
+			desc := descStyle.Render(c.description)
+			lines = append(lines, "  "+cmd+" "+desc)
 		}
-		sb.WriteString("\n")
 	}
 
-	// Add a closing border line
-	sb.WriteString("  ── Esc to close ──")
+	// Footer
+	footerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8"))
+	lines = append(lines, footerStyle.Render("  ── Esc to close ──"))
 
-	return sb.String()
+	// Wrap all lines in the dark-background panel.
+	// panelStyle.Width(m.width) pads each line to full terminal width
+	// with the background color, creating a solid block.
+	return panelStyle.Render(strings.Join(lines, "\n"))
 }
 
 func (m *Model) streamResponse() {

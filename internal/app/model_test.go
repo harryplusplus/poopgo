@@ -780,6 +780,52 @@ func TestFakeProvider_temperatureEchoed(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Command palette visual distinction (issue #22)
+// ---------------------------------------------------------------------------
+
+func TestCommandPalette_visualDistinction(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("/")
+	m.updateCommandMode()
+
+	palette := m.renderCommandPalette()
+
+	// Palette must have a background color to visually distinguish from
+	// the viewport content (issue #22).
+	// lipgloss Background("236") produces ANSI 256-color escape \033[48;5;236m.
+	if !strings.Contains(palette, "\033[48;5;236") {
+		t.Error("palette missing background color (issue #22): should visually distinguish from viewport")
+	}
+
+	// Header must be present
+	if !strings.Contains(palette, "Commands") {
+		t.Error("palette missing header")
+	}
+
+	// Selected item must have a distinct background (not the same as panel bg).
+	// lipgloss Background("8") + Foreground("15") → \033[97;100m (bright white on bright black).
+	if !strings.Contains(palette, "\033[97;100m") {
+		t.Error("selected item should have distinct background from panel")
+	}
+}
+
+func TestCommandPalette_inViewOutput(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("/")
+	m.updateCommandMode()
+
+	view := m.View().Content
+
+	// The palette should appear in the View output when command mode is active
+	if !strings.Contains(view, "\033[48;5;236") {
+		t.Error("View should include palette with background when command mode is active")
+	}
+	if !strings.Contains(view, "Commands") {
+		t.Error("View should include palette header when command mode is active")
+	}
+}
+
 func TestFakeProvider_temperatureNotEchoedWhenEmpty(t *testing.T) {
 	m := newTestModel()
 	var contentTokens []string
