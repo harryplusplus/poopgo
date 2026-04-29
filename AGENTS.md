@@ -117,6 +117,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 ## Known Constraints
 - **Shift+Enter 네이티브 지원**: Bubble Tea v2로 마이그레이션하여 Kitty Keyboard Protocol 네이티브 지원. `Alt+Enter`는 제거됨. `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`로 감지.
 - **Viewport 키 스크롤 불가**: viewport.KeyMap이 비어 있어 화살표/PgUp/PgDn으로 채팅 스크롤 불가. 마우스 휠 또는 slash command(`/scroll-up`, `/scroll-down`) 사용.
+- **Viewport SoftWrap 활성화**: `SoftWrap = true`로 설정되어 viewport 폭을 넘는 긴 줄은 자동으로 줄바꿈됨. `bubbles/v2` viewport는 기본값 `SoftWrap = false`이며, false일 경우 `ansi.Cut()`으로 초과분을 잘라내 가로스크롤을 의도하지만 KeyMap이 비어 있어 접근 불가능하므로 반드시 true로 설정해야 함. SoftWrap은 `ansi.Cut(line, idx, maxWidth+idx)`로 문자 단위 분할하며, ANSI escape sequence를 올바르게 처리함.
 - **TUI 테스트 한계**: `tea.Program.Run()`은 실제 터미널 필요. Model.Update에 KeyPressMsg 직접 주입하는 방식으로 키 입력 테스트.
 
 ## Testing Guidelines
@@ -133,3 +134,4 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `m.View().Content`로 View 문자열 검증 (v2 View()는 `tea.View` 반환)
 - Reasoning rendering 테스트 시 `\033[3m` (italic on), `\033[23m` (italic off) escape 포함 여부 확인
 - `NewModel`의 `reasoningEffort` 파라미터로 reasoning depth 설정 테스트
+- Viewport SoftWrap 테스트: `m.viewport.SoftWrap`이 true인지 확인. `SetWidth(20)` 같은 좁은 폭에서 긴 문자열로 `refreshViewport()` 후 `m.viewport.TotalLineCount() > 1` 확인 (줄바꿈 발생). `m.viewport.GetContent()`로 전체 콘텐츠 보존 여부 확인.
