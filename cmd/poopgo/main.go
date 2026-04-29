@@ -38,8 +38,9 @@ func main() {
 	}
 
 	reasoningEffort := os.Getenv("POOPGO_REASONING_EFFORT")
+	temperature := os.Getenv("POOPGO_TEMPERATURE")
 
-	m := app.NewModel(apiKey, apiBase, chatModel, reasoningEffort, initErr, streamProvider)
+	m := app.NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature, initErr, streamProvider)
 	p := tea.NewProgram(
 		m,
 		tea.WithAltScreen(),

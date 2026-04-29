@@ -13,7 +13,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func newTestModel() *Model {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", "", NewFakeProvider())
 	m.width = 100
 	m.height = 30
 	return m
@@ -605,21 +605,21 @@ func TestRefreshViewport_noReasoningWhenEmpty(t *testing.T) {
 }
 
 func TestNewModel_reasoningEffortStored(t *testing.T) {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "high", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "high", "", "", NewFakeProvider())
 	if m.reasoningEffort != "high" {
 		t.Errorf("reasoningEffort = %q, want %q", m.reasoningEffort, "high")
 	}
 }
 
 func TestNewModel_reasoningEffort_xhigh(t *testing.T) {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "xhigh", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "xhigh", "", "", NewFakeProvider())
 	if m.reasoningEffort != "xhigh" {
 		t.Errorf("reasoningEffort = %q, want %q", m.reasoningEffort, "xhigh")
 	}
 }
 
 func TestNewModel_reasoningEffort_max(t *testing.T) {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "max", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "max", "", "", NewFakeProvider())
 	if m.reasoningEffort != "max" {
 		t.Errorf("reasoningEffort = %q, want %q", m.reasoningEffort, "max")
 	}
@@ -629,5 +629,73 @@ func TestNewModel_reasoningEffortEmptyByDefault(t *testing.T) {
 	m := newTestModel()
 	if m.reasoningEffort != "" {
 		t.Errorf("reasoningEffort should be empty, got %q", m.reasoningEffort)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Temperature
+// ---------------------------------------------------------------------------
+
+func TestNewModel_temperatureStored(t *testing.T) {
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "0.7", "", NewFakeProvider())
+	if m.temperature != "0.7" {
+		t.Errorf("temperature = %q, want %q", m.temperature, "0.7")
+	}
+}
+
+func TestNewModel_temperatureEmptyByDefault(t *testing.T) {
+	m := newTestModel()
+	if m.temperature != "" {
+		t.Errorf("temperature should be empty by default, got %q", m.temperature)
+	}
+}
+
+func TestFakeProvider_temperatureEchoed(t *testing.T) {
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "0.7", "", NewFakeProvider())
+	m.width = 100
+	m.height = 30
+	m.textarea.SetValue("hello")
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Simulate full fake provider stream synchronously (no goroutine needed)
+	// Reconstruct what streamResponse does — call provider.Stream directly.
+	var contentTokens []string
+	err := m.provider.Stream(
+		[]Message{{Role: "user", Content: "hello"}},
+		"gpt-4o",
+		func(tok string) { contentTokens = append(contentTokens, tok) },
+		nil,
+		"",
+		"0.7",
+	)
+	if err != nil {
+		t.Fatalf("fake provider stream: %v", err)
+	}
+	full := strings.Join(contentTokens, "")
+	if !strings.Contains(full, "🌡️") {
+		t.Error("expected temperature indicator in fake provider output")
+	}
+	if !strings.Contains(full, "0.7") {
+		t.Error("expected temperature value 0.7 in fake provider output")
+	}
+}
+
+func TestFakeProvider_temperatureNotEchoedWhenEmpty(t *testing.T) {
+	m := newTestModel()
+	var contentTokens []string
+	err := m.provider.Stream(
+		[]Message{{Role: "user", Content: "hello"}},
+		"gpt-4o",
+		func(tok string) { contentTokens = append(contentTokens, tok) },
+		nil,
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("fake provider stream: %v", err)
+	}
+	full := strings.Join(contentTokens, "")
+	if strings.Contains(full, "🌡️") {
+		t.Error("temperature indicator should not appear when temperature is empty")
 	}
 }

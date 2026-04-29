@@ -309,6 +309,78 @@ func TestChatRequestMarshalWithReasoningEffort_max(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// chatRequest with temperature
+// ---------------------------------------------------------------------------
+
+func TestChatRequestMarshalWithTemperature(t *testing.T) {
+	t32 := float32(0.7)
+	req := chatRequest{
+		Model:       "gpt-4o",
+		Messages:    []Message{{Role: "user", Content: "hi"}},
+		Stream:      true,
+		Temperature: &t32,
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if !strings.Contains(string(data), `"temperature":0.7`) {
+		t.Errorf("missing temperature in JSON: %s", string(data))
+	}
+
+	var roundtrip chatRequest
+	if err := json.Unmarshal(data, &roundtrip); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if roundtrip.Temperature == nil || *roundtrip.Temperature != 0.7 {
+		t.Errorf("temperature mismatch: %v", roundtrip.Temperature)
+	}
+}
+
+func TestChatRequestMarshalWithTemperature_zero(t *testing.T) {
+	t32 := float32(0.0)
+	req := chatRequest{
+		Model:       "gpt-4o",
+		Messages:    []Message{{Role: "user", Content: "hi"}},
+		Stream:      true,
+		Temperature: &t32,
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	// Zero temperature should be included (not omitted) when explicitly set
+	if !strings.Contains(string(data), `"temperature":0`) {
+		t.Errorf("temperature 0 should be included in JSON: %s", string(data))
+	}
+}
+
+func TestChatRequestMarshalOmitemptyTemperature(t *testing.T) {
+	req := chatRequest{
+		Model:    "gpt-4o",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+		Stream:   true,
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if strings.Contains(string(data), "temperature") {
+		t.Errorf("temperature should be omitted when nil: %s", string(data))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// chatRequest with reasoning_effort
+// ---------------------------------------------------------------------------
+
 func TestChatRequestMarshalOmitemptyReasoningEffort(t *testing.T) {
 	req := chatRequest{
 		Model:    "gpt-4o",

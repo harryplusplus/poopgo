@@ -51,6 +51,7 @@ type Model struct {
 	apiBase         string
 	chatModel       string
 	reasoningEffort string
+	temperature     string
 	provider        StreamProvider
 
 	// Layout
@@ -80,7 +81,7 @@ var defaultCommands = []commandItem{
 
 // NewModel creates a Model with the given configuration.  Call SetProgram
 // after tea.NewProgram to enable streaming.
-func NewModel(apiKey, apiBase, chatModel, reasoningEffort, initErr string, provider StreamProvider) *Model {
+func NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature, initErr string, provider StreamProvider) *Model {
 	ta := textarea.New()
 	ta.Placeholder = "Message… (/ for commands, Enter to send, Alt+Enter for newline)"
 	ta.CharLimit = 8000
@@ -106,6 +107,7 @@ func NewModel(apiKey, apiBase, chatModel, reasoningEffort, initErr string, provi
 		apiBase:         apiBase,
 		chatModel:       chatModel,
 		reasoningEffort: reasoningEffort,
+		temperature:     temperature,
 		initErr:         initErr,
 		provider:        provider,
 		messages:        make([]Message, 0),
@@ -517,6 +519,6 @@ func (m *Model) streamResponse() {
 	onReasoningToken := func(token string) {
 		m.program.Send(StreamReasoningMsg(token))
 	}
-	err := m.provider.Stream(m.messages[:len(m.messages)-1], m.chatModel, onToken, onReasoningToken, m.reasoningEffort)
+	err := m.provider.Stream(m.messages[:len(m.messages)-1], m.chatModel, onToken, onReasoningToken, m.reasoningEffort, m.temperature)
 	m.program.Send(StreamDoneMsg{Err: err})
 }

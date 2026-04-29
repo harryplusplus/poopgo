@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -13,8 +14,9 @@ import (
 // It sends messages to an LLM, invokes onToken for each content delta and
 // onReasoningToken for each reasoning_content delta (reasoning models only).
 // reasoningEffort controls reasoning depth ("low", "medium", "high"); empty means disabled.
+// temperature sets the sampling temperature (0.0-2.0); empty means API default.
 type StreamProvider interface {
-	Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort string) error
+	Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error
 }
 
 // ---------------------------------------------------------------------------
@@ -34,12 +36,20 @@ func NewRealProvider(apiKey, apiBase string) *RealProvider {
 
 // Stream implements StreamProvider by POSTing to the chat completions endpoint
 // and parsing the SSE response stream.
-func (p *RealProvider) Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort string) error {
+func (p *RealProvider) Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error {
 	payload := chatRequest{
 		Model:           model,
 		Messages:        messages,
 		Stream:          true,
 		ReasoningEffort: reasoningEffort,
+	}
+	if temperature != "" {
+		t, err := strconv.ParseFloat(temperature, 32)
+		if err != nil {
+			return fmt.Errorf("invalid POOPGO_TEMPERATURE %q: %w", temperature, err)
+		}
+		t32 := float32(t)
+		payload.Temperature = &t32
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -83,8 +93,9 @@ func NewFakeProvider() *FakeProvider {
 
 // Stream implements StreamProvider by echoing the last user message with a
 // fake-provider banner. If reasoningEffort is set, emits fake reasoning tokens
-// first. Each character is emitted as a separate token to exercise the streaming path.
-func (p *FakeProvider) Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort string) error {
+// first. Temperature is echoed but not applied. Each character is emitted as
+// a separate token to exercise the streaming path.
+func (p *FakeProvider) Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error {
 	// Emit fake reasoning if reasoningEffort is set
 	if reasoningEffort != "" && onReasoningToken != nil {
 		reasoning := "🤔 [FAKE REASONING] Thinking with effort=" + reasoningEffort + "... "
@@ -100,6 +111,9 @@ func (p *FakeProvider) Stream(messages []Message, model string, onToken, onReaso
 		echo += "No input."
 	}
 	echo += "\n\nPOOPGO_PROVIDER=fake → using fake provider (no API calls)."
+	if temperature != "" {
+		echo += fmt.Sprintf("\n🌡️  Temperature = %s", temperature)
+	}
 
 	for _, ch := range echo {
 		onToken(string(ch))

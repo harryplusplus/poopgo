@@ -48,6 +48,7 @@ go build -o poopgo ./cmd/poopgo
 | `POOPGO_MODEL`     | `gpt-4o`                       | Model name                           |
 | `POOPGO_PROVIDER`  | *(empty → real API)*           | `"fake"` for fake provider (no API)  |
 | `POOPGO_REASONING_EFFORT` | *(empty → disabled)*  | Reasoning depth: `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` (for reasoning models like o1/o3) |
+| `POOPGO_TEMPERATURE` | *(empty → API default)* | Sampling temperature `0.0`–`2.0` (e.g., `"0.7"`) |
 
 All can be set via environment variables or a `.env` file.
 
@@ -84,6 +85,13 @@ go run ./cmd/poopgo
 ```bash
 export POOPGO_PROVIDER="fake"
 export POOPGO_REASONING_EFFORT="high"
+go run ./cmd/poopgo
+```
+
+**With custom temperature:**
+```bash
+export POOPGO_API_KEY="sk-..."
+export POOPGO_TEMPERATURE="0.7"
 go run ./cmd/poopgo
 ```
 

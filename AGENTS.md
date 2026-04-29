@@ -36,17 +36,18 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 | `POOPGO_MODEL` | `gpt-4o` | 모델명 |
 | `POOPGO_PROVIDER` | *(empty → RealProvider)* | `"fake"` → FakeProvider |
 | `POOPGO_REASONING_EFFORT` | *(empty → disabled)* | Reasoning depth: `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` (reasoning models only) |
+| `POOPGO_TEMPERATURE` | *(empty → API default)* | Sampling temperature `0.0`–`2.0` (e.g., `"0.7"`) |
 
 `.env` 파일로도 설정 가능. `main.go`에서 `godotenv.Load()` 호출.
 
 ## Key Patterns
 
 ### Provider Architecture
-- `StreamProvider` interface: `Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort string) error`
-- `RealProvider`: OpenAI 호환 `/chat/completions` API에 HTTP POST → SSE 파싱
-- `FakeProvider`: 마지막 user message를 echo + banner. `reasoningEffort`가 설정되면 가짜 reasoning 토큰을 먼저 emit. API 호출 없음, 테스트용
+- `StreamProvider` interface: `Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error`
+- `RealProvider`: OpenAI 호환 `/chat/completions` API에 HTTP POST → SSE 파싱. `temperature`가 비어있지 않으면 `strconv.ParseFloat`로 파싱해 `chatRequest.Temperature`에 `*float32`로 주입.
+- `FakeProvider`: 마지막 user message를 echo + banner. `reasoningEffort`가 설정되면 가짜 reasoning 토큰을 먼저 emit. `temperature`가 설정되면 echo에 🌡️ 표시. API 호출 없음, 테스트용
 - `main.go`에서 `POOPGO_PROVIDER` env var에 따라 provider 선택
-- `reasoningEffort`는 `main.go` → `NewModel` → `streamResponse()` → `provider.Stream()`으로 전달
+- `reasoningEffort`와 `temperature`는 `main.go` → `NewModel` → `streamResponse()` → `provider.Stream()`으로 전달
 - Model은 provider만 바라보고, HTTP/SSE 디테일을 모름 (의존성 역전)
 
 ### Model Lifecycle

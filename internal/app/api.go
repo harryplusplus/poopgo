@@ -25,6 +25,7 @@ type chatRequest struct {
 	Model           string    `json:"model"`
 	Messages        []Message `json:"messages"`
 	Stream          bool      `json:"stream"`
+	Temperature     *float32  `json:"temperature,omitempty"`
 	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 }
 
