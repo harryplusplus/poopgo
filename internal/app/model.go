@@ -48,7 +48,7 @@ type Model struct {
 
 	// Config
 	apiKey          string
-	apiBase         string
+	baseURL         string
 	chatModel       string
 	reasoningEffort string
 	temperature     string
@@ -76,7 +76,7 @@ var defaultCommands = []commandItem{
 
 // NewModel creates a Model with the given configuration.  Call SetProgram
 // after tea.NewProgram to enable streaming.
-func NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature string, provider StreamProvider) *Model {
+func NewModel(apiKey, baseURL, chatModel, reasoningEffort, temperature string, provider StreamProvider) *Model {
 	// Textarea
 	ta := textarea.New()
 	ta.Placeholder = "Message… (/ for commands, Enter to send, Shift+Enter for newline)"
@@ -104,7 +104,7 @@ func NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature string, p
 		textarea:        ta,
 		spinner:         s,
 		apiKey:          apiKey,
-		apiBase:         apiBase,
+		baseURL:         baseURL,
 		chatModel:       chatModel,
 		reasoningEffort: reasoningEffort,
 		temperature:     temperature,
@@ -323,7 +323,7 @@ func (m *Model) View() tea.View {
 // ---------------------------------------------------------------------------
 
 func (m *Model) statusLine() string {
-	left := fmt.Sprintf(" %s | %s", m.chatModel, m.apiBase)
+	left := fmt.Sprintf(" %s | %s", m.chatModel, m.baseURL)
 	if m.reasoningEffort != "" {
 		left += fmt.Sprintf(" | 💭%s", m.reasoningEffort)
 	}

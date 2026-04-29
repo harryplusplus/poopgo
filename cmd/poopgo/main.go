@@ -10,9 +10,9 @@ import (
 
 func main() {
 	apiKey := os.Getenv("POOPGO_API_KEY")
-	apiBase := os.Getenv("POOPGO_BASE_URL")
-	if apiBase == "" {
-		apiBase = "https://api.openai.com/v1"
+	baseURL := os.Getenv("POOPGO_BASE_URL")
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
 	}
 	chatModel := os.Getenv("POOPGO_MODEL")
 	if chatModel == "" {
@@ -26,7 +26,7 @@ func main() {
 	if provider == "fake" {
 		streamProvider = app.NewFakeProvider()
 	} else {
-		streamProvider = app.NewRealProvider(apiKey, apiBase)
+		streamProvider = app.NewRealProvider(apiKey, baseURL)
 	}
 
 	if apiKey == "" && provider != "fake" {
@@ -37,7 +37,7 @@ func main() {
 	reasoningEffort := os.Getenv("POOPGO_REASONING_EFFORT")
 	temperature := os.Getenv("POOPGO_TEMPERATURE")
 
-	m := app.NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature, streamProvider)
+	m := app.NewModel(apiKey, baseURL, chatModel, reasoningEffort, temperature, streamProvider)
 	p := tea.NewProgram(
 		m,
 	)

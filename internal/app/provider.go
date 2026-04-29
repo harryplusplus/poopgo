@@ -26,12 +26,12 @@ type StreamProvider interface {
 // RealProvider makes real HTTP requests to an OpenAI-compatible /chat/completions API.
 type RealProvider struct {
 	apiKey  string
-	apiBase string
+	baseURL string
 }
 
 // NewRealProvider creates a RealProvider with the given credentials.
-func NewRealProvider(apiKey, apiBase string) *RealProvider {
-	return &RealProvider{apiKey: apiKey, apiBase: apiBase}
+func NewRealProvider(apiKey, baseURL string) *RealProvider {
+	return &RealProvider{apiKey: apiKey, baseURL: baseURL}
 }
 
 // Stream implements StreamProvider by POSTing to the chat completions endpoint
@@ -56,7 +56,7 @@ func (p *RealProvider) Stream(messages []Message, model string, onToken, onReaso
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := strings.TrimRight(p.apiBase, "/") + "/chat/completions"
+	url := strings.TrimRight(p.baseURL, "/") + "/chat/completions"
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
