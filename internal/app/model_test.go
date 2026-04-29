@@ -13,7 +13,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func newTestModel() *Model {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", NewFakeProvider())
 	m.width = 100
 	m.height = 30
 	m.viewport.SetWidth(100)
@@ -86,33 +86,20 @@ func TestRefreshViewport_systemMessage(t *testing.T) {
 	}
 }
 
-func TestRefreshViewport_initErr(t *testing.T) {
+// Regression test for #31: initErr removed from model; main.go now fails fast
+// on missing API key with stderr + exit 1. The welcome screen must not
+// show any initErr message.
+func TestRefreshViewport_noInitErr(t *testing.T) {
 	m := newTestModel()
-	m.initErr = "no api key"
 	m.messages = nil
 	m.refreshViewport()
 	content := stripANSI(m.viewport.View())
 
-	if !strings.Contains(content, "no api key") {
-		t.Errorf("missing init error: %s", content)
-	}
-}
-
-// Regression test for #29: .env file auto-loading removed.
-// The initErr message set by main.go must not reference ".env file".
-func TestRefreshViewport_initErr_noDotEnvReference(t *testing.T) {
-	m := newTestModel()
-	// This is the exact message set by main.go after #29
-	m.initErr = "POOPGO_API_KEY not set. Set it in your environment."
-	m.messages = nil
-	m.refreshViewport()
-	content := stripANSI(m.viewport.View())
-
-	if !strings.Contains(content, "POOPGO_API_KEY not set") {
-		t.Errorf("missing init error: %s", content)
+	if strings.Contains(content, "POOPGO_API_KEY") {
+		t.Errorf("welcome must not reference POOPGO_API_KEY after fail-fast change (#31): %s", content)
 	}
 	if strings.Contains(content, ".env") {
-		t.Errorf("initErr must not reference .env file after godotenv removal: %s", content)
+		t.Errorf("welcome must not reference .env: %s", content)
 	}
 }
 
@@ -644,21 +631,21 @@ func TestRefreshViewport_noReasoningWhenEmpty(t *testing.T) {
 }
 
 func TestNewModel_reasoningEffortStored(t *testing.T) {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "high", "", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "high", "", NewFakeProvider())
 	if m.reasoningEffort != "high" {
 		t.Errorf("reasoningEffort = %q, want %q", m.reasoningEffort, "high")
 	}
 }
 
 func TestNewModel_reasoningEffort_xhigh(t *testing.T) {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "xhigh", "", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "xhigh", "", NewFakeProvider())
 	if m.reasoningEffort != "xhigh" {
 		t.Errorf("reasoningEffort = %q, want %q", m.reasoningEffort, "xhigh")
 	}
 }
 
 func TestNewModel_reasoningEffort_max(t *testing.T) {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "max", "", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "max", "", NewFakeProvider())
 	if m.reasoningEffort != "max" {
 		t.Errorf("reasoningEffort = %q, want %q", m.reasoningEffort, "max")
 	}
@@ -676,7 +663,7 @@ func TestNewModel_reasoningEffortEmptyByDefault(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNewModel_temperatureStored(t *testing.T) {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "0.7", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "0.7", NewFakeProvider())
 	if m.temperature != "0.7" {
 		t.Errorf("temperature = %q, want %q", m.temperature, "0.7")
 	}
@@ -751,7 +738,7 @@ func TestViewport_longLineVisible(t *testing.T) {
 }
 
 func TestFakeProvider_temperatureEchoed(t *testing.T) {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "0.7", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "0.7", NewFakeProvider())
 	m.width = 100
 	m.height = 30
 	m.textarea.SetValue("hello")

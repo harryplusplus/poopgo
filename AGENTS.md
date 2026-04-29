@@ -49,8 +49,9 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - Model은 provider만 바라보고, HTTP/SSE 디테일을 모름 (의존성 역전)
 
 ### Model Lifecycle
+- `main.go`에서 `POOPGO_API_KEY` 미설정 + provider가 fake가 아니면 즉시 stderr 출력 후 `os.Exit(1)` (fail-fast). 더 이상 `initErr`를 Model에 전달하지 않음.
 - `NewModel()` 생성 후 `SetProgram(p *tea.Program)` 호출해야 goroutine에서 `p.Send()` 사용 가능
-- `streamResponse()` → `provider.Stream(messages, model, onToken, onReasoningToken, reasoningEffort)` 호출. provider가 모든 HTTP/SSE 로직을 캡슐화
+- `streamResponse()` → `provider.Stream(messages, model, onToken, onReasoningToken, reasoningEffort, temperature)` 호출. provider가 모든 HTTP/SSE 로직을 캡슐화
 - `onToken` 콜백이 `p.Send(StreamChunkMsg(token))` 호출 → Model.Update에서 처리
 - `onReasoningToken` 콜백이 `p.Send(StreamReasoningMsg(token))` 호출 → Model.Update에서 동일 패턴으로 처리
 
@@ -137,5 +138,6 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `stripANSI()`로 ANSI 이스케이프 제거 후 문자열 검증
 - `m.View().Content`로 View 문자열 검증 (v2 View()는 `tea.View` 반환)
 - Reasoning rendering 테스트 시 `\033[3m` (italic on), `\033[23m` (italic off) escape 포함 여부 확인
-- `NewModel`의 `reasoningEffort` 파라미터로 reasoning depth 설정 테스트
+- `NewModel`의 `reasoningEffort`, `temperature` 파라미터로 설정 테스트
 - Viewport SoftWrap 테스트: `m.viewport.SoftWrap`이 true인지 확인. `SetWidth(20)` 같은 좁은 폭에서 긴 문자열로 `refreshViewport()` 후 `m.viewport.TotalLineCount() > 1` 확인 (줄바꿈 발생). `m.viewport.GetContent()`로 전체 콘텐츠 보존 여부 확인.
+- `newTestModel()` 헬퍼는 FakeProvider 사용, `NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", NewFakeProvider())` — `reasoningEffort`, `temperature`는 빈 문자열 (6개 인자)

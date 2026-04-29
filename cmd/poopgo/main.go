@@ -29,15 +29,15 @@ func main() {
 		streamProvider = app.NewRealProvider(apiKey, apiBase)
 	}
 
-	var initErr string
 	if apiKey == "" && provider != "fake" {
-		initErr = "POOPGO_API_KEY not set. Set it in your environment."
+		fmt.Fprintf(os.Stderr, "poopgo: POOPGO_API_KEY not set. Set it in your environment.\n")
+		os.Exit(1)
 	}
 
 	reasoningEffort := os.Getenv("POOPGO_REASONING_EFFORT")
 	temperature := os.Getenv("POOPGO_TEMPERATURE")
 
-	m := app.NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature, initErr, streamProvider)
+	m := app.NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature, streamProvider)
 	p := tea.NewProgram(
 		m,
 	)

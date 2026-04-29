@@ -61,9 +61,6 @@ type Model struct {
 	// Spinner shown during streaming
 	spinner spinner.Model
 
-	// Error to display once
-	initErr string
-
 	// Command palette (triggered by "/" at start)
 	commandMode      bool
 	commands         []commandItem
@@ -81,7 +78,7 @@ var defaultCommands = []commandItem{
 
 // NewModel creates a Model with the given configuration.  Call SetProgram
 // after tea.NewProgram to enable streaming.
-func NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature, initErr string, provider StreamProvider) *Model {
+func NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature string, provider StreamProvider) *Model {
 	// Textarea
 	ta := textarea.New()
 	ta.Placeholder = "Message… (/ for commands, Enter to send, Shift+Enter for newline)"
@@ -113,7 +110,6 @@ func NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature, initErr 
 		chatModel:       chatModel,
 		reasoningEffort: reasoningEffort,
 		temperature:     temperature,
-		initErr:         initErr,
 		provider:        provider,
 		messages:        make([]Message, 0),
 		commands:        defaultCommands,
@@ -336,9 +332,6 @@ func (m *Model) refreshViewport() {
 
 	if len(m.messages) == 0 {
 		sb.WriteString("🤖 PoopGo — AI Agent Harness\n\n")
-		if m.initErr != "" {
-			sb.WriteString("⚠️  " + m.initErr + "\n\n")
-		}
 		sb.WriteString("Enter a message to start.\n")
 	}
 

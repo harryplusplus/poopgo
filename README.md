@@ -20,16 +20,8 @@ It streams responses from any OpenAI-compatible API right in your terminal.
 export POOPGO_API_KEY="sk-your-key-here"
 ```
 
-Or create a `.env` file and source it before running:
-
-```bash
-# .env
-POOPGO_API_KEY=sk-your-key-here
-```
-
-```bash
-set -a; . .env; set +a; go run ./cmd/poopgo
-```
+If `POOPGO_API_KEY` is not set (and `POOPGO_PROVIDER` is not `fake`),
+PoopGo prints an error to stderr and exits immediately.
 
 ### 2. Run
 
