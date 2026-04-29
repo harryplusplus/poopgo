@@ -47,7 +47,7 @@ go build -o poopgo ./cmd/poopgo
 | `POOPGO_BASE_URL`  | `https://api.openai.com/v1`    | Base URL of the chat completions API |
 | `POOPGO_MODEL`     | `gpt-4o`                       | Model name                           |
 | `POOPGO_PROVIDER`  | *(empty → real API)*           | `"fake"` for fake provider (no API)  |
-| `POOPGO_REASONING_EFFORT` | *(empty → disabled)*  | Reasoning depth: `"low"`, `"medium"`, `"high"` (for reasoning models like o1/o3) |
+| `POOPGO_REASONING_EFFORT` | *(empty → disabled)*  | Reasoning depth: `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` (for reasoning models like o1/o3) |
 
 All can be set via environment variables or a `.env` file.
 

@@ -257,6 +257,58 @@ func TestChatRequestMarshalWithReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestChatRequestMarshalWithReasoningEffort_xhigh(t *testing.T) {
+	req := chatRequest{
+		Model:           "o3-mini",
+		Messages:        []Message{{Role: "user", Content: "hi"}},
+		Stream:          true,
+		ReasoningEffort: "xhigh",
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if !strings.Contains(string(data), `"reasoning_effort":"xhigh"`) {
+		t.Errorf("missing reasoning_effort xhigh in JSON: %s", string(data))
+	}
+
+	var roundtrip chatRequest
+	if err := json.Unmarshal(data, &roundtrip); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if roundtrip.ReasoningEffort != "xhigh" {
+		t.Errorf("reasoning_effort = %q", roundtrip.ReasoningEffort)
+	}
+}
+
+func TestChatRequestMarshalWithReasoningEffort_max(t *testing.T) {
+	req := chatRequest{
+		Model:           "o3-mini",
+		Messages:        []Message{{Role: "user", Content: "hi"}},
+		Stream:          true,
+		ReasoningEffort: "max",
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if !strings.Contains(string(data), `"reasoning_effort":"max"`) {
+		t.Errorf("missing reasoning_effort max in JSON: %s", string(data))
+	}
+
+	var roundtrip chatRequest
+	if err := json.Unmarshal(data, &roundtrip); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if roundtrip.ReasoningEffort != "max" {
+		t.Errorf("reasoning_effort = %q", roundtrip.ReasoningEffort)
+	}
+}
+
 func TestChatRequestMarshalOmitemptyReasoningEffort(t *testing.T) {
 	req := chatRequest{
 		Model:    "gpt-4o",

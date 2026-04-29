@@ -35,7 +35,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 | `POOPGO_BASE_URL` | `https://api.openai.com/v1` | Chat completions API base URL |
 | `POOPGO_MODEL` | `gpt-4o` | 모델명 |
 | `POOPGO_PROVIDER` | *(empty → RealProvider)* | `"fake"` → FakeProvider |
-| `POOPGO_REASONING_EFFORT` | *(empty → disabled)* | Reasoning depth: `"low"`, `"medium"`, `"high"` (reasoning models only) |
+| `POOPGO_REASONING_EFFORT` | *(empty → disabled)* | Reasoning depth: `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` (reasoning models only) |
 
 `.env` 파일로도 설정 가능. `main.go`에서 `godotenv.Load()` 호출.
 

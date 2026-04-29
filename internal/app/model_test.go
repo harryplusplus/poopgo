@@ -611,6 +611,20 @@ func TestNewModel_reasoningEffortStored(t *testing.T) {
 	}
 }
 
+func TestNewModel_reasoningEffort_xhigh(t *testing.T) {
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "xhigh", "", NewFakeProvider())
+	if m.reasoningEffort != "xhigh" {
+		t.Errorf("reasoningEffort = %q, want %q", m.reasoningEffort, "xhigh")
+	}
+}
+
+func TestNewModel_reasoningEffort_max(t *testing.T) {
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "max", "", NewFakeProvider())
+	if m.reasoningEffort != "max" {
+		t.Errorf("reasoningEffort = %q, want %q", m.reasoningEffort, "max")
+	}
+}
+
 func TestNewModel_reasoningEffortEmptyByDefault(t *testing.T) {
 	m := newTestModel()
 	if m.reasoningEffort != "" {
