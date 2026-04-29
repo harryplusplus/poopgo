@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // commandItem is a single entry in the slash-command palette.
@@ -82,21 +82,25 @@ var defaultCommands = []commandItem{
 // NewModel creates a Model with the given configuration.  Call SetProgram
 // after tea.NewProgram to enable streaming.
 func NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature, initErr string, provider StreamProvider) *Model {
+	// Textarea
 	ta := textarea.New()
-	ta.Placeholder = "Message… (/ for commands, Enter to send, Alt+Enter for newline)"
+	ta.Placeholder = "Message… (/ for commands, Enter to send, Shift+Enter for newline)"
 	ta.CharLimit = 8000
 	ta.SetHeight(3)
 	ta.ShowLineNumbers = false
-	ta.FocusedStyle.CursorLine = lipgloss.NewStyle().
+	sty := ta.Styles()
+	sty.Focused.CursorLine = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("12"))
+	ta.SetStyles(sty)
 	ta.KeyMap.InsertNewline.SetEnabled(false)
 	ta.Focus()
 
-	vp := viewport.New(80, 20)
+	// Viewport
+	vp := viewport.New()
 	vp.KeyMap = viewport.KeyMap{}
 
-	s := spinner.New()
-	s.Spinner = spinner.Dot
+	// Spinner
+	s := spinner.New(spinner.WithSpinner(spinner.Dot))
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	m := &Model{
@@ -141,12 +145,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = msg.Width
+		m.viewport.SetWidth(msg.Width)
 		m.textarea.SetWidth(msg.Width)
-		m.viewport.Height = msg.Height - 5 // separator(1) + textarea(3) + status(1)
+		m.viewport.SetHeight(msg.Height - 5) // separator(1) + textarea(3) + status(1)
 		m.refreshViewport()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.handleCommandMode(msg) {
 			m.refreshViewport()
 			return m, nil
@@ -205,7 +209,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.spinner.Tick)
 			return m, tea.Batch(cmds...)
 
-		case "alt+enter":
+		case "shift+enter":
 			if !m.streaming {
 				m.textarea.SetValue(m.textarea.Value() + "\n")
 				m.textarea, _ = m.textarea.Update(msg)
@@ -269,9 +273,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // ---------------------------------------------------------------------------
 
 // View implements tea.Model.
-func (m *Model) View() string {
+func (m *Model) View() tea.View {
 	if m.width == 0 {
-		return "Loading…"
+		return tea.NewView("Loading…")
 	}
 
 	sep := strings.Repeat("─", m.width)
@@ -285,13 +289,18 @@ func (m *Model) View() string {
 			"\n"
 	}
 
-	return lipgloss.JoinVertical(
+	content := lipgloss.JoinVertical(
 		lipgloss.Left,
 		m.viewport.View(),
 		palette+sepStyle,
 		m.textarea.View(),
 		status,
 	)
+
+	v := tea.NewView(content)
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }
 
 // ---------------------------------------------------------------------------
@@ -372,7 +381,7 @@ func (m *Model) appendSystem(text string) {
 
 // handleCommandMode handles key events when the command palette is active.
 // Returns true if the event was consumed.
-func (m *Model) handleCommandMode(msg tea.KeyMsg) bool {
+func (m *Model) handleCommandMode(msg tea.KeyPressMsg) bool {
 	if !m.commandMode {
 		return false
 	}
@@ -457,10 +466,10 @@ func (m *Model) executeCommand(input string) {
 		m.appendSystem(sb.String())
 
 	case "/scroll-up":
-		m.viewport.ViewUp()
+		m.viewport.PageUp()
 
 	case "/scroll-down":
-		m.viewport.ViewDown()
+		m.viewport.PageDown()
 
 	case "/scroll-top":
 		m.viewport.GotoTop()

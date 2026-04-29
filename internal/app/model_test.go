@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
 )
 
 // ---------------------------------------------------------------------------
@@ -16,6 +16,9 @@ func newTestModel() *Model {
 	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", "", NewFakeProvider())
 	m.width = 100
 	m.height = 30
+	m.viewport.SetWidth(100)
+	m.viewport.SetHeight(25) // 30 - 5
+	m.refreshViewport()
 	return m
 }
 
@@ -135,17 +138,17 @@ func TestUpdate_windowSize(t *testing.T) {
 	if updated.height != 40 {
 		t.Errorf("height = %d", updated.height)
 	}
-	if updated.viewport.Width != 120 {
-		t.Errorf("viewport width = %d", updated.viewport.Width)
+	if updated.viewport.Width() != 120 {
+		t.Errorf("viewport width = %d", updated.viewport.Width())
 	}
-	if updated.viewport.Height != 35 {
-		t.Errorf("viewport height = %d, want 35 (40-5)", updated.viewport.Height)
+	if updated.viewport.Height() != 35 {
+		t.Errorf("viewport height = %d, want 35 (40-5)", updated.viewport.Height())
 	}
 }
 
 func TestUpdate_quitOnCtrlC(t *testing.T) {
 	m := newTestModel()
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("expected quit command on ctrl+c")
 	}
@@ -153,7 +156,7 @@ func TestUpdate_quitOnCtrlC(t *testing.T) {
 
 func TestUpdate_escNoQuitInNormalMode(t *testing.T) {
 	m := newTestModel()
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if cmd != nil {
 		t.Fatal("esc in normal mode should not quit; only Ctrl+C quits")
 	}
@@ -168,7 +171,7 @@ func TestUpdate_escClosesCommandMode(t *testing.T) {
 		t.Fatal("should be in command mode")
 	}
 	// Esc should exit command mode but not quit
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if m.commandMode {
 		t.Error("should exit command mode on esc")
 	}
@@ -180,7 +183,7 @@ func TestUpdate_escClosesCommandMode(t *testing.T) {
 func TestUpdate_enterEmptyIgnored(t *testing.T) {
 	m := newTestModel()
 	m.textarea.SetValue("   ")
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd != nil {
 		t.Fatal("expected no command for empty input")
 	}
@@ -193,7 +196,7 @@ func TestUpdate_enterWithMissingKey(t *testing.T) {
 	m := newTestModel()
 	m.apiKey = ""
 	m.textarea.SetValue("hello")
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	if m.textarea.Value() != "" {
 		t.Error("textarea should be reset")
@@ -206,7 +209,7 @@ func TestUpdate_enterWithMissingKey(t *testing.T) {
 func TestUpdate_enterSubmitsMessage(t *testing.T) {
 	m := newTestModel()
 	m.textarea.SetValue("hello world")
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	if m.textarea.Value() != "" {
 		t.Error("textarea should be cleared after submit")
@@ -229,7 +232,7 @@ func TestUpdate_enterBlockedWhileStreaming(t *testing.T) {
 	m := newTestModel()
 	m.streaming = true
 	m.textarea.SetValue("ignored")
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	if cmd != nil {
 		t.Fatal("expected no command when streaming")
@@ -310,7 +313,7 @@ func TestUpdate_streamDoneMsg_withError(t *testing.T) {
 func TestSpinner_tickCommandOnEnter(t *testing.T) {
 	m := newTestModel()
 	m.textarea.SetValue("hello")
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	if cmd == nil {
 		t.Fatal("expected spinner tick command on enter")
@@ -363,7 +366,7 @@ func TestSpinner_stopsOnStreamDoneMsg(t *testing.T) {
 func TestView_loadingState(t *testing.T) {
 	m := newTestModel()
 	m.width = 0
-	s := m.View()
+	s := m.View().Content
 	if !strings.Contains(s, "Loading") {
 		t.Errorf("expected Loading, got %s", s)
 	}
@@ -371,7 +374,7 @@ func TestView_loadingState(t *testing.T) {
 
 func TestView_normalState(t *testing.T) {
 	m := newTestModel()
-	s := m.View()
+	s := m.View().Content
 	if !strings.Contains(s, "Ctrl+C quit") {
 		t.Errorf("missing status bar: %s", s)
 	}
@@ -396,13 +399,13 @@ func TestTypeCharacters(t *testing.T) {
 	m := newTestModel()
 
 	// Type 'h'
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	_, _ = m.Update(tea.KeyPressMsg{Text: "h"})
 	if m.textarea.Value() != "h" {
 		t.Errorf("value = %q, want %q", m.textarea.Value(), "h")
 	}
 
 	// Type 'i'
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	_, _ = m.Update(tea.KeyPressMsg{Text: "i"})
 	if m.textarea.Value() != "hi" {
 		t.Errorf("value = %q, want %q", m.textarea.Value(), "hi")
 	}
@@ -412,28 +415,28 @@ func TestBackspace(t *testing.T) {
 	m := newTestModel()
 	m.textarea.SetValue("hello")
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if m.textarea.Value() != "hell" {
 		t.Errorf("value = %q, want %q", m.textarea.Value(), "hell")
 	}
 }
 
-func TestAltEnterInsertsNewline(t *testing.T) {
+func TestShiftEnterInsertsNewline(t *testing.T) {
 	m := newTestModel()
 	m.textarea.SetValue("line1")
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
 	if m.textarea.Value() != "line1\n" {
 		t.Errorf("value = %q, want %q", m.textarea.Value(), "line1\n")
 	}
 }
 
-func TestAltEnterBlockedWhileStreaming(t *testing.T) {
+func TestShiftEnterBlockedWhileStreaming(t *testing.T) {
 	m := newTestModel()
 	m.streaming = true
 	m.textarea.SetValue("line1")
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
 	_ = cmd
 	if m.textarea.Value() != "line1" {
 		t.Errorf("value should not change while streaming, got %q", m.textarea.Value())
@@ -444,7 +447,7 @@ func TestCommandModeActivates(t *testing.T) {
 	m := newTestModel()
 
 	// Type '/'
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	_, _ = m.Update(tea.KeyPressMsg{Text: "/"})
 	if !m.commandMode {
 		t.Error("command mode should activate on '/'")
 	}
@@ -453,7 +456,7 @@ func TestCommandModeActivates(t *testing.T) {
 	}
 
 	// Type 'h' → value becomes "/h", still starts with /
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	_, _ = m.Update(tea.KeyPressMsg{Text: "h"})
 	if !m.commandMode {
 		t.Error("command mode should stay active for '/h'")
 	}
@@ -463,14 +466,14 @@ func TestCommandModeActivates(t *testing.T) {
 
 	// Clear the '/' → command mode deactivates
 	m.textarea.SetValue("hello")
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'!'}})
+	_, _ = m.Update(tea.KeyPressMsg{Text: "!"})
 	if m.commandMode {
 		t.Error("command mode should deactivate when value doesn't start with '/'")
 	}
 
 	// Re-type '/' + 'h' + 'e' + 'l' + 'p' → command mode, filter narrows
 	m.textarea.SetValue("/help")
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	_, _ = m.Update(tea.KeyPressMsg{Text: "x"})
 	// Value is "/helpx", still starts with /
 	if !m.commandMode {
 		t.Error("command mode should stay active for /helpx")
@@ -485,7 +488,7 @@ func TestCommandModeExecutesHelp(t *testing.T) {
 	m.textarea.SetValue("/help")
 	m.updateCommandMode() // populate filteredCommands
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	_ = cmd
 
 	if m.commandMode {
@@ -511,7 +514,7 @@ func TestTypingNotBlocked(t *testing.T) {
 
 	// Type message character by character
 	for _, r := range "hello world" {
-		_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		_, _ = m.Update(tea.KeyPressMsg{Text: string(r)})
 	}
 
 	if m.textarea.Value() != "hello world" {
@@ -519,7 +522,7 @@ func TestTypingNotBlocked(t *testing.T) {
 	}
 
 	// Submit
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	if m.textarea.Value() != "" {
 		t.Error("textarea should be cleared after submit")
@@ -673,7 +676,7 @@ func TestFakeProvider_temperatureEchoed(t *testing.T) {
 	m.width = 100
 	m.height = 30
 	m.textarea.SetValue("hello")
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	// Simulate full fake provider stream synchronously (no goroutine needed)
 	// Reconstruct what streamResponse does — call provider.Stream directly.
@@ -717,3 +720,4 @@ func TestFakeProvider_temperatureNotEchoedWhenEmpty(t *testing.T) {
 		t.Error("temperature indicator should not appear when temperature is empty")
 	}
 }
+

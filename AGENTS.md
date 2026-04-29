@@ -4,7 +4,7 @@
 poopgo
 
 ## Project
-PoopGo — Bubble Tea 기반 터미널 AI 채팅 클라이언트.
+PoopGo — Bubble Tea v2 기반 터미널 AI 채팅 클라이언트.
 OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 
 ## File Inventory
@@ -57,11 +57,11 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `onReasoningToken` 콜백이 `p.Send(StreamReasoningMsg(token))` 호출 → Model.Update에서 동일 패턴으로 처리
 
 ### Key Handling
-- `handleCommandMode()` — command mode 활성 시 `tea.KeyMsg` 인터셉터
+- `handleCommandMode()` — command mode 활성 시 `tea.KeyPressMsg` 인터셉터
 - Command mode에서 `Esc`/`Ctrl+C`는 palette만 닫기 (Quit 안 함)
 - Normal mode에서 `Esc`는 no-op, `Ctrl+C`만 Quit
 - `Enter`: 메시지 전송 or command 실행
-- `Alt+Enter`: textarea에 newline 삽입 (Bubble Tea v1.3.10에서 `Shift+Enter`는 별도 key type이 없으므로 `Alt+Enter` 사용)
+- `Shift+Enter`: textarea에 newline 삽입 (Bubble Tea v2의 Kitty Keyboard Protocol 네이티브 지원 — `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`)
 - 그 외 일반 키: textarea로 전달 → `updateCommandMode()` 호출해 `/` prefix 감지
 - Viewport KeyMap은 비어 있음 (`viewport.KeyMap{}`) → 키 스크롤 불가, 마우스 휠 또는 slash command로만 스크롤
 
@@ -93,34 +93,43 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `chatRequest.ReasoningEffort`는 `json:"reasoning_effort,omitempty"` — 빈 값이면 JSON에서 생략
 - `refreshViewport()`에서 reasoning content는 이탤릭(ANSI `\033[3m`...`\033[23m`)으로 렌더링, `💭 Reasoning` 헤더 포함
 - `StreamReasoningMsg` → Update에서 `StreamChunkMsg`와 동일한 패턴으로 처리 (assistant 슬롯의 `ReasoningContent` 누적)
-- lipgloss v1.1.0에 `Italic()` 없으므로 raw ANSI escape 사용
+- lipgloss v2도 `Italic()` 미지원이므로 raw ANSI escape 사용
+
+### View (v2 Declarative)
+- `View()`는 `tea.View`를 반환 — `tea.NewView(content)`로 생성
+- `v.AltScreen = true`, `v.MouseMode = tea.MouseModeCellMotion`으로 v1의 `WithAltScreen()`, `WithMouseCellMotion()` 대체
+- bubbles 컴포넌트(textarea, viewport, spinner)의 `View()`는 여전히 `string` 반환
 
 ### Command Palette
 - `/` 입력 → slash command palette 활성화
 - Commands: `/help`, `/scroll-up`, `/scroll-down`, `/scroll-top`, `/scroll-bottom`
 - `updateCommandMode()`가 textarea 값 기반으로 `filteredCommands` 필터링
-- `executeCommand()`가 실제 동작 수행 (viewport 스크롤, system message 출력)
+- `executeCommand()`가 실제 동작 수행 (viewport `PageUp()`/`PageDown()` 호출 — v2에서 `ViewUp()`/`ViewDown()`이 `PageUp()`/`PageDown()`으로 변경됨)
 
 ## Dependencies
 | Module | Version | Usage |
 |---|---|---|
-| `github.com/charmbracelet/bubbletea` | v1.3.10 | Elm 아키텍처 TUI 프레임워크 |
-| `github.com/charmbracelet/bubbles` | v1.0.0 | textarea, viewport 컴포넌트 |
-| `github.com/charmbracelet/lipgloss` | v1.1.0 | 스타일링 |
+| `charm.land/bubbletea/v2` | v2.0.6 | Elm 아키텍처 TUI 프레임워크 (v2 — Kitty Keyboard Protocol 네이티브 지원, declarative View) |
+| `charm.land/bubbles/v2` | v2.1.0 | textarea, viewport, spinner 컴포넌트 |
+| `charm.land/lipgloss/v2` | v2.0.3 | 스타일링 |
 | `github.com/joho/godotenv` | v1.5.1 | `.env` 로딩 |
 
 ## Known Constraints
-- **Shift+Enter 미지원**: Bubble Tea v1.3.10에 `KeyShiftEnter` 타입이 없음. `Alt+Enter`로 newline 입력.
+- **Shift+Enter 네이티브 지원**: Bubble Tea v2로 마이그레이션하여 Kitty Keyboard Protocol 네이티브 지원. `Alt+Enter`는 제거됨. `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`로 감지.
 - **Viewport 키 스크롤 불가**: viewport.KeyMap이 비어 있어 화살표/PgUp/PgDn으로 채팅 스크롤 불가. 마우스 휠 또는 slash command(`/scroll-up`, `/scroll-down`) 사용.
-- **TUI 테스트 한계**: `tea.Program.Run()`은 실제 터미널 필요. Model.Update에 keyMsg 직접 주입하는 방식으로 키 입력 테스트.
+- **TUI 테스트 한계**: `tea.Program.Run()`은 실제 터미널 필요. Model.Update에 KeyPressMsg 직접 주입하는 방식으로 키 입력 테스트.
 
 ## Testing Guidelines
 - 모든 테스트는 네트워크 불필요 (FakeProvider 사용)
-- `newTestModel()` 헬퍼로 FakeProvider 기반 Model 생성
-- `tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}}`로 문자 입력 시뮬레이션
-- `tea.KeyMsg{Type: tea.KeyEnter}`로 Enter 시뮬레이션
-- `tea.KeyMsg{Type: tea.KeyEnter, Alt: true}`로 Alt+Enter 시뮬레이션
+- `newTestModel()` 헬퍼로 FakeProvider 기반 Model 생성 (viewport.SetWidth/SetHeight 호출 필요 — v2 viewport.New()는 초기 크기 미설정)
+- `tea.KeyPressMsg{Text: "h"}`로 문자 입력 시뮬레이션 (v2는 `Text string` 필드 사용)
+- `tea.KeyPressMsg{Code: tea.KeyEnter}`로 Enter 시뮬레이션
+- `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`로 Shift+Enter 시뮬레이션 (newline 삽입)
+- `tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}`로 Ctrl+C 시뮬레이션
+- `tea.KeyPressMsg{Code: tea.KeyEsc}`로 Esc 시뮬레이션
+- `tea.KeyPressMsg{Code: tea.KeyBackspace}`로 Backspace 시뮬레이션
 - `StreamChunkMsg("token")`, `StreamReasoningMsg("token")`, `StreamDoneMsg{Err: err}`로 스트리밍 시뮬레이션
 - `stripANSI()`로 ANSI 이스케이프 제거 후 문자열 검증
+- `m.View().Content`로 View 문자열 검증 (v2 View()는 `tea.View` 반환)
 - Reasoning rendering 테스트 시 `\033[3m` (italic on), `\033[23m` (italic off) escape 포함 여부 확인
 - `NewModel`의 `reasoningEffort` 파라미터로 reasoning depth 설정 테스트

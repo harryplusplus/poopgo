@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/harryplusplus/poopgo/internal/app"
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/joho/godotenv"
 )
 
@@ -43,8 +43,6 @@ func main() {
 	m := app.NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature, initErr, streamProvider)
 	p := tea.NewProgram(
 		m,
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
 	)
 	m.SetProgram(p)
 

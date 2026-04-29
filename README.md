@@ -1,6 +1,6 @@
 # 💩 PoopGo — AI Agent Harness
 
-PoopGo is a terminal-based AI chat client built with [Bubble Tea](https://github.com/charmbracelet/bubbletea).
+PoopGo is a terminal-based AI chat client built with [Bubble Tea v2](https://github.com/charmbracelet/bubbletea).
 It streams responses from any OpenAI-compatible API right in your terminal.
 
 ## Features
@@ -100,7 +100,7 @@ go run ./cmd/poopgo
 | Key              | Action                       |
 |------------------|------------------------------|
 | `Enter`          | Send message                 |
-| `Alt+Enter`      | Insert newline               |
+| `Shift+Enter`    | Insert newline               |
 | `Ctrl+C`         | Quit                         |
 | `Esc`            | Close palette (command mode) / no-op (normal mode) |
 | `/`              | Open command palette         |
