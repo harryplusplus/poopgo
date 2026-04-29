@@ -6,7 +6,7 @@ It streams responses from any OpenAI-compatible API right in your terminal.
 ## Features
 
 - 🖥️ Full TUI with scrollable chat history (mouse wheel, slash commands)
-- ⚡ Streaming token-by-token responses (SSE)
+- ⚡ Streaming token-by-token responses (SSE) with animated spinner
 - 🔌 Works with OpenAI, local LLMs (Ollama, LM Studio), or any `/chat/completions` endpoint
 - ⌨️ Slash command palette (`/help`, `/scroll-up`, `/scroll-down`, …)
 - 🧪 Fake provider for UI testing without API calls
@@ -87,6 +87,7 @@ go run ./cmd/poopgo
 | `Esc` / `Ctrl+C` | Quit (close palette in command mode) |
 | `/`              | Open command palette         |
 | Mouse wheel      | Scroll chat history          |
+| Spinner in status | Appears while AI is responding |
 | `↑`/`↓` in palette | Navigate commands         |
 
 ### Slash Commands
@@ -127,10 +128,12 @@ All tests are self-contained; no network or external dependencies required.
 ## Project Structure
 
 ```
-cmd/poopgo/main.go       Entry point — env loading, provider selection, Bubble Tea Program
-internal/app/model.go    Main Model (viewport, textarea, messages, command palette)
-internal/app/api.go      Types (Message, chatRequest) + SSE stream parsing
-internal/app/provider.go StreamProvider interface + RealProvider + FakeProvider
+cmd/poopgo/main.go          Entry point — env loading, provider selection, Bubble Tea Program
+internal/app/model.go       Main Model (viewport, textarea, messages, command palette, spinner)
+internal/app/model_test.go  Model unit tests — keyboard, messages, streaming, command palette
+internal/app/api.go         Types (Message, chatRequest) + SSE stream parsing
+internal/app/api_test.go    SSE parsing + JSON serialization tests
+internal/app/provider.go    StreamProvider interface + RealProvider + FakeProvider
 ```
 
 ## License

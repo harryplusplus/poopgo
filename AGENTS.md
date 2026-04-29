@@ -22,7 +22,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 | File | Role |
 |------|------|
 | `cmd/poopgo/main.go` | 진입점 — godotenv 로드, provider 선택, Bubble Tea Program 생성 |
-| `internal/app/model.go` | 메인 Model — viewport, textarea, messages, command palette, Update/View |
+| `internal/app/model.go` | 메인 Model — viewport, textarea, messages, command palette, spinner, Update/View |
 | `internal/app/model_test.go` | Model 단위 테스트 — 키 입력, 메시지 흐름, 스트리밍, 커맨드 팔레트 |
 | `internal/app/api.go` | 타입 정의 (Message, chatRequest, streamChunk) + SSE 파싱 |
 | `internal/app/api_test.go` | SSE 파싱 + JSON 직렬화 테스트 |
@@ -62,10 +62,18 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 
 ### Streaming Flow
 1. 사용자가 Enter → `messages`에 user + empty assistant 추가 → `streaming = true`
-2. `go m.streamResponse()` → provider.Stream 호출
-3. Provider가 토큰마다 `onToken` 콜백 → `p.Send(StreamChunkMsg)`
-4. Model.Update의 `StreamChunkMsg` case에서 assistant message content 누적
-5. 완료 시 `p.Send(StreamDoneMsg{Err: err})` → `streaming = false`, textarea 재포커스
+2. Spinner Tick command 시작 → `spinner.TickMsg`가 주기적으로 발생
+3. `go m.streamResponse()` → provider.Stream 호출
+4. Provider가 토큰마다 `onToken` 콜백 → `p.Send(StreamChunkMsg)`
+5. Model.Update의 `StreamChunkMsg` case에서 assistant message content 누적
+6. 완료 시 `p.Send(StreamDoneMsg{Err: err})` → `streaming = false`, spinner 정지, textarea 재포커스
+
+### Spinner Lifecycle
+- `spinner.Dot` (브라유 점) 사용, color "6" (cyan)
+- Enter로 메시지 전송 시 `m.spinner.Tick` command 시작 → 스트리밍 중 계속 ticking
+- `spinner.TickMsg`는 Update에서 처리, `streaming == true`일 때만 다음 tick 예약
+- `StreamDoneMsg` 수신 → `streaming = false` → 다음 tick 예약 안 함 → spinner 정지
+- Spinner는 `statusLine()`에서 `m.spinner.View()`로 렌더링
 
 ### SSE Parsing
 - `parseSSEStream()` — `data:` 라인에서 JSON content delta 추출

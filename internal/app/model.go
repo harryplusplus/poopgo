@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -52,6 +53,9 @@ type Model struct {
 	width  int
 	height int
 
+	// Spinner shown during streaming
+	spinner spinner.Model
+
 	// Error to display once
 	initErr string
 
@@ -86,9 +90,14 @@ func NewModel(apiKey, apiBase, chatModel, initErr string, provider StreamProvide
 	vp := viewport.New(80, 20)
 	vp.KeyMap = viewport.KeyMap{}
 
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
 	m := &Model{
 		viewport:  vp,
 		textarea:  ta,
+		spinner:   s,
 		apiKey:    apiKey,
 		apiBase:   apiBase,
 		chatModel: chatModel,
@@ -186,7 +195,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoBottom()
 
 			go m.streamResponse()
-			return m, nil
+			cmds = append(cmds, m.spinner.Tick)
+			return m, tea.Batch(cmds...)
 
 		case "alt+enter":
 			if !m.streaming {
@@ -223,6 +233,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		m.viewport.GotoBottom()
 		cmds = append(cmds, textarea.Blink)
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		if m.streaming {
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	var vpCmd tea.Cmd
@@ -269,7 +286,7 @@ func (m *Model) View() string {
 func (m *Model) statusLine() string {
 	left := fmt.Sprintf(" %s | %s", m.chatModel, m.apiBase)
 	if m.streaming {
-		left += " ● streaming"
+		left += " " + m.spinner.View() + " streaming"
 	}
 	right := "Ctrl+C quit"
 	width := m.width
