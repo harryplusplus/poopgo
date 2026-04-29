@@ -106,7 +106,6 @@ go run ./cmd/poopgo
 | `↑`/`↓` in palette | Navigate commands          |
 | Mouse wheel / touchpad | Scroll (terminal-native) |
 | Mouse drag       | Select text (terminal-native → Cmd+C) |
-| Spinner in status | Appears while AI is responding |
 
 ### Slash Commands
 
