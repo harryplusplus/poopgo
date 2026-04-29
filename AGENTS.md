@@ -158,7 +158,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - **Viewport KeyMap은 비어 있음** (`viewport.KeyMap{}`) → viewport 자체 키바인딩 없음. 스크롤은 마우스 휠(터미널 네이티브)과 `/scroll-top`, `/scroll-bottom` slash command로만 가능.
 - **Viewport SoftWrap 활성화**: `SoftWrap = true`로 설정되어 viewport 폭을 넘는 긴 줄은 자동으로 줄바꿈됨. `bubbles/v2` viewport는 기본값 `SoftWrap = false`이며, false일 경우 `ansi.Cut()`으로 초과분을 잘라내 가로스크롤을 의도하지만 KeyMap이 비어 있어 접근 불가능하므로 반드시 true로 설정해야 함. SoftWrap은 `ansi.Cut(line, idx, maxWidth+idx)`로 문자 단위 분할하며, ANSI escape sequence를 올바르게 처리함.
 - **lipgloss v2 `Style.Render()` 멀티라인 패딩**: lipgloss v2의 `Render()`는 멀티라인 문자열의 각 줄을 최대 너비로 공백 패딩한다. `\n\n` 패턴이 `\n<spaces>\n`으로 변형되어 빈 줄 감지가 깨지므로, 개행 구조가 중요한 콘텐츠에는 `ansi.Style.Styled()`를 대신 사용할 것 (#18). `ansi.Style`은 순수 인라인 스타일링만 적용한다.
-- **Reasoning content 연속 개행 정규화**: `collapseNewlines()`로 렌더링 전에 연속 `\n`을 최대 2개로 축소 (방어적).
+- **Reasoning content 개행 보존**: `ansi.Style.Styled()`는 순수 인라인 스타일링만 적용하며 모든 개행을 그대로 보존. 모델 출력을 faithful하게 렌더링.
 - **TUI 테스트 한계**: `tea.Program.Run()`은 실제 터미널 필요. Model.Update에 KeyPressMsg 직접 주입하는 방식으로 키 입력 테스트.
 
 ## Testing Guidelines

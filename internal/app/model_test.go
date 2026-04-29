@@ -1075,11 +1075,13 @@ func TestLipglossV2_RenderDestroysParagraphBreaks(t *testing.T) {
 	}
 }
 
-// TestRefreshViewport_reasoningExcessiveNewlines reproduces the bug where
-// reasoning content from the model contains many consecutive blank lines
-// between chain-of-thought paragraphs. Those should be collapsed to at most
-// one blank line between paragraphs (\n\n).
-func TestRefreshViewport_reasoningExcessiveNewlines(t *testing.T) {
+// TestRefreshViewport_reasoningPreservesAllNewlines: the primary #18 fix
+// was removing sysStyle.Render() from reasoning content (lipgloss v2 pads
+// each line to max width, destroying \n\n patterns). ansi.Style.Styled()
+// is pure inline styling and preserves all newlines as-is, including
+// excessive ones from reasoning models. We do NOT collapse them — the
+// model output is rendered faithfully.
+func TestRefreshViewport_reasoningPreservesAllNewlines(t *testing.T) {
 	m := newTestModel()
 	// Reasoning content with 6 consecutive newlines between paragraphs
 	// (simulating the actual reasoning model output pattern)
@@ -1088,22 +1090,16 @@ func TestRefreshViewport_reasoningExcessiveNewlines(t *testing.T) {
 		{Role: "assistant", Content: "안녕하세요!", ReasoningContent: "We need to parse the user's query.\n\n\n\n\n\nWe need to respond appropriately.\n\n\n\n\n\nThe user's command: We are in a chat interface."},
 	}
 	m.refreshViewport()
-	// Strip ANSI to inspect raw newline structure (lipgloss wraps each line
-	// with color codes which break up consecutive \n sequences in GetContent).
 	content := stripANSI(m.viewport.GetContent())
 
-	// Should have no quadruple+ newline sequences
-	if strings.Contains(content, "\n\n\n\n") {
-		t.Errorf("reasoning content has 4+ consecutive newlines — should be collapsed (#18)\ncontent dump:\n%s", content)
-	}
-	// Triple newline should also be absent (at most \n\n for one blank line)
-	if strings.Contains(content, "\n\n\n") {
-		t.Errorf("reasoning content has triple newline — should be collapsed to at most \\n\\n (#18)\ncontent dump:\n%s", content)
+	// 6x newlines should be preserved as-is (no collapse)
+	if !strings.Contains(content, "query.\n\n\n\n\n\nWe need") {
+		t.Errorf("reasoning content should preserve all newlines as-is (#18)\ncontent dump:\n%s", content)
 	}
 }
 
 // TestRefreshViewport_reasoningNormalParagraphs ensures that normal paragraph
-// breaks (\n\n) in reasoning content are preserved (not over-collapsed).
+// breaks (\n\n) in reasoning content are preserved.
 func TestRefreshViewport_reasoningNormalParagraphs(t *testing.T) {
 	m := newTestModel()
 	m.messages = []Message{
@@ -1117,18 +1113,12 @@ func TestRefreshViewport_reasoningNormalParagraphs(t *testing.T) {
 	if !strings.Contains(content, "First thought.\n\nSecond thought.") {
 		t.Errorf("normal paragraph breaks in reasoning should be preserved (#18)\ncontent dump:\n%s", content)
 	}
-	// But no triple newlines
-	if strings.Contains(content, "\n\n\n") {
-		t.Errorf("triple newlines in reasoning content — regression (#18)\ncontent dump:\n%s", content)
-	}
 }
 
-// TestRefreshViewport_reasoningNewlines_DontAffectContent ensures that the
-// newline normalization only applies to reasoning content, not the regular
-// assistant message content.
+// TestRefreshViewport_reasoningNewlines_DontAffectContent ensures that
+// reasoning rendering (ansi.Style) doesn't affect regular content newlines.
 func TestRefreshViewport_reasoningNewlines_DontAffectContent(t *testing.T) {
 	m := newTestModel()
-	// Regular content has paragraph breaks — those should be preserved as-is
 	m.messages = []Message{
 		{Role: "user", Content: "explain"},
 		{Role: "assistant", Content: "Here is a detailed explanation.\n\nIt has multiple paragraphs.\n\nEach with normal spacing.", ReasoningContent: "Let me think.\n\n\n\n\nAbout this."},
@@ -1139,10 +1129,6 @@ func TestRefreshViewport_reasoningNewlines_DontAffectContent(t *testing.T) {
 	// Content paragraph breaks (\n\n) should be preserved
 	if !strings.Contains(content, "detailed explanation.\n\nIt has") {
 		t.Errorf("regular content paragraph breaks should be preserved (#18)\ncontent dump:\n%s", content)
-	}
-	// Reasoning excessive newlines should be collapsed
-	if strings.Contains(content, "Let me think.\n\n\n") {
-		t.Errorf("reasoning excessive newlines should be collapsed (#18)\ncontent dump:\n%s", content)
 	}
 }
 
@@ -1296,11 +1282,11 @@ func TestStreamingReasoning_noExcessiveNewlines(t *testing.T) {
 	}
 }
 
-// TestStreamingReasoning_excessiveNewlinesCollapsed uses a custom provider
-// that emits reasoning content with many consecutive newlines between
-// paragraphs (simulating real DeepSeek/OpenAI reasoning model output).
-// Verifies that the viewport collapses these to at most one blank line.
-func TestStreamingReasoning_excessiveNewlinesCollapsed(t *testing.T) {
+// TestStreamingReasoning_preservesNewlines uses a custom provider that
+// emits reasoning content with many consecutive newlines between paragraphs
+// (simulating real DeepSeek/OpenAI reasoning model output). Verifies that
+// ansi.Style.Styled() preserves all newlines faithfully (no collapse).
+func TestStreamingReasoning_preservesNewlines(t *testing.T) {
 	m := newTestModel()
 	m.textarea.SetValue("hello")
 
@@ -1346,14 +1332,9 @@ func TestStreamingReasoning_excessiveNewlinesCollapsed(t *testing.T) {
 
 	content := stripANSI(m.viewport.GetContent())
 
-	// Reasoning content should be collapsed: no triple+ newlines
-	if strings.Contains(content, "\n\n\n") {
-		t.Errorf("reasoning content with 6x newlines was not collapsed — found triple+ newlines (#18)\ncontent dump:\n%s", content)
-	}
-
-	// But the reasoning paragraphs should still be separated by one blank line
-	if !strings.Contains(content, "Let me analyze this.\n\nAfter consideration,") {
-		t.Errorf("collapsed reasoning paragraphs missing expected \\n\\n separator (#18)\ncontent dump:\n%s", content)
+	// 6x newlines should be preserved (no collapse — ansi.Style is inline-only)
+	if !strings.Contains(content, "Let me analyze this.\n\n\n\n\n\nAfter consideration,") {
+		t.Errorf("reasoning content 6x newlines not preserved after streaming\ncontent dump:\n%s", content)
 	}
 
 	// Content should be intact
