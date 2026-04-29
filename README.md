@@ -101,7 +101,8 @@ go run ./cmd/poopgo
 |------------------|------------------------------|
 | `Enter`          | Send message                 |
 | `Alt+Enter`      | Insert newline               |
-| `Esc` / `Ctrl+C` | Quit (close palette in command mode) |
+| `Ctrl+C`         | Quit                         |
+| `Esc`            | Close palette (command mode) / no-op (normal mode) |
 | `/`              | Open command palette         |
 | Mouse wheel      | Scroll chat history          |
 | Spinner in status | Appears while AI is responding |

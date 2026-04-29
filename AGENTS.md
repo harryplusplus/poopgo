@@ -58,7 +58,8 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 
 ### Key Handling
 - `handleCommandMode()` — command mode 활성 시 `tea.KeyMsg` 인터셉터
-- Command mode에서 `Esc`/`Ctrl+C`는 Quit 대신 palette만 닫기
+- Command mode에서 `Esc`/`Ctrl+C`는 palette만 닫기 (Quit 안 함)
+- Normal mode에서 `Esc`는 no-op, `Ctrl+C`만 Quit
 - `Enter`: 메시지 전송 or command 실행
 - `Alt+Enter`: textarea에 newline 삽입 (Bubble Tea v1.3.10에서 `Shift+Enter`는 별도 key type이 없으므로 `Alt+Enter` 사용)
 - 그 외 일반 키: textarea로 전달 → `updateCommandMode()` 호출해 `/` prefix 감지

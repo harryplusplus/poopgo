@@ -168,7 +168,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.refreshViewport()
 				return m, nil
 			}
-			return m, tea.Quit
+			// Esc in normal mode is a no-op — only Ctrl+C quits
 
 		case "enter":
 			if m.streaming {

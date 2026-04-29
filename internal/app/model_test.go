@@ -151,11 +151,29 @@ func TestUpdate_quitOnCtrlC(t *testing.T) {
 	}
 }
 
-func TestUpdate_quitOnEsc(t *testing.T) {
+func TestUpdate_escNoQuitInNormalMode(t *testing.T) {
 	m := newTestModel()
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if cmd == nil {
-		t.Fatal("expected quit command on esc")
+	if cmd != nil {
+		t.Fatal("esc in normal mode should not quit; only Ctrl+C quits")
+	}
+}
+
+func TestUpdate_escClosesCommandMode(t *testing.T) {
+	m := newTestModel()
+	// Enter command mode
+	m.textarea.SetValue("/")
+	m.updateCommandMode()
+	if !m.commandMode {
+		t.Fatal("should be in command mode")
+	}
+	// Esc should exit command mode but not quit
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.commandMode {
+		t.Error("should exit command mode on esc")
+	}
+	if cmd != nil {
+		t.Fatal("esc in command mode should not quit")
 	}
 }
 
