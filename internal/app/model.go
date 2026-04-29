@@ -144,7 +144,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport.SetWidth(msg.Width)
 		m.textarea.SetWidth(msg.Width)
-		m.viewport.SetHeight(msg.Height - 5) // separator(1) + textarea(3) + status(1)
+		m.applyLayout()
 		m.refreshViewport()
 
 	case tea.KeyPressMsg:
@@ -327,6 +327,25 @@ func (m *Model) statusLine() string {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// applyLayout recalculates viewport height based on current terminal
+// size and whether the command palette is showing (issue #33).
+func (m *Model) applyLayout() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
+	// separator(1) + textarea(3) + status(1) = 5
+	overhead := 5
+	if m.commandMode {
+		// Reserve space for the palette: header(1) + all commands + footer(1)
+		overhead += len(m.commands) + 2
+	}
+	h := m.height - overhead
+	if h < 1 {
+		h = 1
+	}
+	m.viewport.SetHeight(h)
+}
+
 func (m *Model) refreshViewport() {
 	var sb strings.Builder
 
@@ -424,6 +443,7 @@ func (m *Model) updateCommandMode() {
 	}
 
 	m.commandMode = true
+	m.applyLayout()
 
 	// Filter commands by prefix
 	m.filteredCommands = nil
@@ -446,6 +466,7 @@ func (m *Model) exitCommandMode() {
 	if strings.HasPrefix(m.textarea.Value(), "/") {
 		m.textarea.Reset()
 	}
+	m.applyLayout()
 }
 
 // executeCommand runs a slash command locally.

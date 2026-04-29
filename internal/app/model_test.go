@@ -833,3 +833,116 @@ func TestFakeProvider_temperatureNotEchoedWhenEmpty(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Command palette layout — viewport height adjusts (issue #33)
+// ---------------------------------------------------------------------------
+
+func TestViewportHeight_normalMode(t *testing.T) {
+	m := newTestModel()
+	// Default: height=30, overhead=5 → viewport height = 25
+	if m.viewport.Height() != 25 {
+		t.Errorf("viewport height should be 25 (30-5), got %d", m.viewport.Height())
+	}
+}
+
+func TestViewportHeight_commandModeShrinksViewport(t *testing.T) {
+	m := newTestModel()
+	// Activate command mode
+	m.textarea.SetValue("/")
+	m.updateCommandMode()
+
+	// Palette = header(1) + 5 commands + footer(1) = 7 extra lines
+	// height=30, overhead=5+7=12 → viewport height = 18
+	if m.viewport.Height() != 18 {
+		t.Errorf("viewport height should be 18 (30-5-7), got %d", m.viewport.Height())
+	}
+	if !m.commandMode {
+		t.Error("should be in command mode")
+	}
+}
+
+func TestViewportHeight_commandModeRestoresOnExit(t *testing.T) {
+	m := newTestModel()
+	// Enter command mode
+	m.textarea.SetValue("/")
+	m.updateCommandMode()
+
+	// Exit command mode
+	m.exitCommandMode()
+
+	if m.viewport.Height() != 25 {
+		t.Errorf("viewport height should restore to 25 (30-5) after exiting command mode, got %d", m.viewport.Height())
+	}
+	if m.commandMode {
+		t.Error("should not be in command mode")
+	}
+}
+
+func TestViewportHeight_commandModeEscRestoresHeight(t *testing.T) {
+	m := newTestModel()
+	// Activate command mode via keypress
+	m.textarea.SetValue("/")
+	m.updateCommandMode()
+
+	if m.viewport.Height() != 18 {
+		t.Errorf("viewport height should be 18 in command mode, got %d", m.viewport.Height())
+	}
+
+	// Esc should exit command mode and restore height
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+
+	if m.viewport.Height() != 25 {
+		t.Errorf("viewport height should restore to 25 after Esc, got %d", m.viewport.Height())
+	}
+}
+
+func TestViewportHeight_commandModeCtrlCRestoresHeight(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("/")
+	m.updateCommandMode()
+
+	// Ctrl+C in command mode exits palette but doesn't quit
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	_ = cmd
+
+	if m.viewport.Height() != 25 {
+		t.Errorf("viewport height should restore to 25 after Ctrl+C in command mode, got %d", m.viewport.Height())
+	}
+	if m.commandMode {
+		t.Error("should exit command mode on ctrl+c")
+	}
+}
+
+func TestViewportHeight_windowSizeInCommandMode(t *testing.T) {
+	m := newTestModel()
+	// Enter command mode first
+	m.textarea.SetValue("/")
+	m.updateCommandMode()
+
+	// Now simulate a window resize while in command mode
+	_, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 50})
+
+	// Palette overhead = 5 + 7 = 12, viewport height = 50 - 12 = 38
+	if m.viewport.Height() != 38 {
+		t.Errorf("viewport height should be 38 (50-12) in command mode after resize, got %d", m.viewport.Height())
+	}
+	if m.width != 120 {
+		t.Errorf("width should be 120, got %d", m.width)
+	}
+}
+
+func TestViewportHeight_minimumHeight(t *testing.T) {
+	m := newTestModel()
+	m.width = 80
+	m.height = 10 // very small terminal
+
+	// Enter command mode — overhead would be 5+7=12 > 10
+	m.textarea.SetValue("/")
+	m.updateCommandMode()
+
+	// Viewport height should be at least 1, not negative
+	if m.viewport.Height() < 1 {
+		t.Errorf("viewport height should be at least 1, got %d", m.viewport.Height())
+	}
+}
+

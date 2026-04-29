@@ -105,6 +105,13 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `updateCommandMode()`가 textarea 값 기반으로 `filteredCommands` 필터링
 - `executeCommand()`가 실제 동작 수행 (viewport `PageUp()`/`PageDown()` 호출 — v2에서 `ViewUp()`/`ViewDown()`이 `PageUp()`/`PageDown()`으로 변경됨)
 
+### Layout (`applyLayout()`)
+- `applyLayout()` — viewport height를 현재 terminal 크기와 command palette 상태에 따라 재계산
+- Normal mode: viewport height = terminal height − 5 (separator 1 + textarea 3 + status 1)
+- Command mode: viewport height = terminal height − 5 − (len(commands) + 2) — palette가 viewport 아래 공간을 차지하므로 viewport를 축소하여 clipping 방지 (#33)
+- 호출 시점: `WindowSizeMsg` 수신, `updateCommandMode()` (palette 진입), `exitCommandMode()` (palette 종료)
+- 최소 viewport height는 1로 clamp
+
 ### Command Palette Rendering
 - `renderCommandPalette()` — dark background panel (`Background("236")`) + `Width(m.width)` → solid block visually separate from viewport
 - Header: bold accent color (12), footer: dim (8)
@@ -141,3 +148,4 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `NewModel`의 `reasoningEffort`, `temperature` 파라미터로 설정 테스트
 - Viewport SoftWrap 테스트: `m.viewport.SoftWrap`이 true인지 확인. `SetWidth(20)` 같은 좁은 폭에서 긴 문자열로 `refreshViewport()` 후 `m.viewport.TotalLineCount() > 1` 확인 (줄바꿈 발생). `m.viewport.GetContent()`로 전체 콘텐츠 보존 여부 확인.
 - `newTestModel()` 헬퍼는 FakeProvider 사용, `NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", NewFakeProvider())` — `reasoningEffort`, `temperature`는 빈 문자열 (6개 인자)
+- Layout 테스트: `m.viewport.Height()`로 viewport 높이 검증. command mode 진입 시 `updateCommandMode()` 호출 후 `m.viewport.Height()`가 축소되었는지 확인. `exitCommandMode()` 후 원복 확인. `WindowSizeMsg`로 resize 시 command mode 상태 반영 확인.
