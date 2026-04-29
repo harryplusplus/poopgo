@@ -6,12 +6,9 @@ import (
 
 	"github.com/harryplusplus/poopgo/internal/app"
 	tea "charm.land/bubbletea/v2"
-	"github.com/joho/godotenv"
 )
 
 func main() {
-	_ = godotenv.Load()
-
 	apiKey := os.Getenv("POOPGO_API_KEY")
 	apiBase := os.Getenv("POOPGO_BASE_URL")
 	if apiBase == "" {
@@ -34,7 +31,7 @@ func main() {
 
 	var initErr string
 	if apiKey == "" && provider != "fake" {
-		initErr = "POOPGO_API_KEY not set. Set it in your environment or .env file."
+		initErr = "POOPGO_API_KEY not set. Set it in your environment."
 	}
 
 	reasoningEffort := os.Getenv("POOPGO_REASONING_EFFORT")

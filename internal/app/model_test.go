@@ -98,6 +98,24 @@ func TestRefreshViewport_initErr(t *testing.T) {
 	}
 }
 
+// Regression test for #29: .env file auto-loading removed.
+// The initErr message set by main.go must not reference ".env file".
+func TestRefreshViewport_initErr_noDotEnvReference(t *testing.T) {
+	m := newTestModel()
+	// This is the exact message set by main.go after #29
+	m.initErr = "POOPGO_API_KEY not set. Set it in your environment."
+	m.messages = nil
+	m.refreshViewport()
+	content := stripANSI(m.viewport.View())
+
+	if !strings.Contains(content, "POOPGO_API_KEY not set") {
+		t.Errorf("missing init error: %s", content)
+	}
+	if strings.Contains(content, ".env") {
+		t.Errorf("initErr must not reference .env file after godotenv removal: %s", content)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // statusLine
 // ---------------------------------------------------------------------------

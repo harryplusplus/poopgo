@@ -20,12 +20,6 @@ It streams responses from any OpenAI-compatible API right in your terminal.
 export POOPGO_API_KEY="sk-your-key-here"
 ```
 
-Or create a `.env` file in the project root:
-
-```
-POOPGO_API_KEY=sk-your-key-here
-```
-
 ### 2. Run
 
 ```bash
@@ -50,7 +44,7 @@ go build -o poopgo ./cmd/poopgo
 | `POOPGO_REASONING_EFFORT` | *(empty → disabled)*  | Reasoning depth: `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` (for reasoning models like o1/o3) |
 | `POOPGO_TEMPERATURE` | *(empty → API default)* | Sampling temperature `0.0`–`2.0` (e.g., `"0.7"`) |
 
-All can be set via environment variables or a `.env` file.
+All can be set via environment variables.
 
 ### Examples
 
@@ -146,7 +140,7 @@ All tests are self-contained; no network or external dependencies required.
 ## Project Structure
 
 ```
-cmd/poopgo/main.go          Entry point — env loading, provider selection, Bubble Tea Program
+cmd/poopgo/main.go          Entry point — provider selection, Bubble Tea Program
 internal/app/model.go       Main Model (viewport, textarea, messages, command palette, spinner)
 internal/app/model_test.go  Model unit tests — keyboard, messages, streaming, command palette
 internal/app/api.go         Types (Message, chatRequest) + SSE stream parsing

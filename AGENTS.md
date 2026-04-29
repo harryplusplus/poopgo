@@ -21,7 +21,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 ## Structure
 | File | Role |
 |------|------|
-| `cmd/poopgo/main.go` | 진입점 — godotenv 로드, provider 선택, Bubble Tea Program 생성 |
+| `cmd/poopgo/main.go` | 진입점 — provider 선택, Bubble Tea Program 생성 |
 | `internal/app/model.go` | 메인 Model — viewport, textarea, messages, command palette, spinner, Update/View |
 | `internal/app/model_test.go` | Model 단위 테스트 — 키 입력, 메시지 흐름, 스트리밍, 커맨드 팔레트 |
 | `internal/app/api.go` | 타입 정의 (Message, chatRequest, streamChunk) + SSE 파싱 (content + reasoning_content) |
@@ -37,8 +37,6 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 | `POOPGO_PROVIDER` | *(empty → RealProvider)* | `"fake"` → FakeProvider |
 | `POOPGO_REASONING_EFFORT` | *(empty → disabled)* | Reasoning depth: `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` (reasoning models only) |
 | `POOPGO_TEMPERATURE` | *(empty → API default)* | Sampling temperature `0.0`–`2.0` (e.g., `"0.7"`) |
-
-`.env` 파일로도 설정 가능. `main.go`에서 `godotenv.Load()` 호출.
 
 ## Key Patterns
 
@@ -112,7 +110,6 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 | `charm.land/bubbletea/v2` | v2.0.6 | Elm 아키텍처 TUI 프레임워크 (v2 — Kitty Keyboard Protocol 네이티브 지원, declarative View) |
 | `charm.land/bubbles/v2` | v2.1.0 | textarea, viewport, spinner 컴포넌트 |
 | `charm.land/lipgloss/v2` | v2.0.3 | 스타일링 |
-| `github.com/joho/godotenv` | v1.5.1 | `.env` 로딩 |
 
 ## Known Constraints
 - **Shift+Enter 네이티브 지원**: Bubble Tea v2로 마이그레이션하여 Kitty Keyboard Protocol 네이티브 지원. `Alt+Enter`는 제거됨. `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`로 감지.
