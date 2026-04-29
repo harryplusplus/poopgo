@@ -48,7 +48,15 @@ go build -o poopgo ./cmd/poopgo
 | `POOPGO_REASONING_EFFORT` | *(empty → disabled)*  | Reasoning depth: `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` (for reasoning models like o1/o3) |
 | `POOPGO_TEMPERATURE` | *(empty → API default)* | Sampling temperature `0.0`–`2.0` (e.g., `"0.7"`) |
 
-All can be set via environment variables.
+All can be set via environment variables or a `.env` file:
+
+```bash
+# Option A: export individually
+export POOPGO_API_KEY="sk-..."
+
+# Option B: load from .env file (bash/zsh)
+set -a; . ./.env; set +a
+```
 
 ### Examples
 
@@ -70,6 +78,15 @@ go run ./cmd/poopgo
 ```bash
 export POOPGO_API_KEY="lm-studio"
 export POOPGO_BASE_URL="http://localhost:1234/v1"
+go run ./cmd/poopgo
+```
+
+**DeepSeek (reasoning):**
+```bash
+export POOPGO_API_KEY="sk-..."
+export POOPGO_BASE_URL="https://api.deepseek.com"
+export POOPGO_MODEL="deepseek-reasoner"
+export POOPGO_REASONING_EFFORT="max"
 go run ./cmd/poopgo
 ```
 
