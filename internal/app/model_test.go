@@ -1162,48 +1162,12 @@ func TestViewportHeight_minimumHeight(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Keyboard scrolling (issue #27 — native text selection)
+// Command palette navigation (keyboard scroll removed in #34)
 // ---------------------------------------------------------------------------
 
-// TestKeyboardScrollUp scrolls viewport up by 1 line in normal mode.
-func TestKeyboardScrollUp(t *testing.T) {
-	m := newTestModel()
-	m.viewport.SetHeight(10)
-	// Add enough messages to fill the viewport and scroll
-	for i := 0; i < 50; i++ {
-		m.messages = append(m.messages, Message{Role: "user", Content: fmt.Sprintf("line %d", i)})
-	}
-	m.refreshViewport()
-	m.viewport.GotoBottom() // start at bottom
-
-	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
-	// After pressing Up, viewport should have scrolled up
-	if m.viewport.AtBottom() {
-		t.Error("viewport should have scrolled up after pressing Up")
-	}
-}
-
-// TestKeyboardScrollDown scrolls viewport down by 1 line in normal mode.
-func TestKeyboardScrollDown(t *testing.T) {
-	m := newTestModel()
-	m.viewport.SetHeight(10)
-	for i := 0; i < 50; i++ {
-		m.messages = append(m.messages, Message{Role: "user", Content: fmt.Sprintf("line %d", i)})
-	}
-	m.refreshViewport()
-	m.viewport.GotoTop() // start at top
-
-	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	if m.viewport.AtTop() {
-		t.Error("viewport should have scrolled down after pressing Down")
-	}
-}
-
-// TestKeyboardPageUp removed: /scroll-up removed (Ghostty handles scrolling).
-// TestKeyboardPageDown removed: /scroll-down removed (Ghostty handles scrolling).
-
-// TestKeyboardScrollInCommandMode passes Up/Down through to command palette navigation.
-func TestKeyboardScrollInCommandMode(t *testing.T) {
+// TestCommandModeUpDownNavigation verifies Up/Down navigate the command
+// palette selection (not viewport scrolling — removed in #34).
+func TestCommandModeUpDownNavigation(t *testing.T) {
 	m := newTestModel()
 	m.textarea.SetValue("/")
 	m.updateCommandMode()
@@ -1233,32 +1197,28 @@ func TestViewMouseModeNone(t *testing.T) {
 	}
 }
 
-// TestStatusLineShowsScrollHelp verifies the status line indicates
-// keyboard scrolling availability.
-func TestStatusLineShowsScrollHelp(t *testing.T) {
+// TestStatusLineCtrlCShown verifies the status line shows the quit keybinding.
+func TestStatusLineCtrlCShown(t *testing.T) {
 	m := newTestModel()
 	s := stripANSI(m.statusLine())
-	if !strings.Contains(s, "scroll") {
-		t.Errorf("status line should mention scroll help: %s", s)
-	}
-	// Should not mention mouse wheel since mouse mode is off
-	if strings.Contains(strings.ToLower(s), "mouse") || strings.Contains(strings.ToLower(s), "wheel") {
-		t.Errorf("status line should not mention mouse wheel (mouse mode off): %s", s)
+	if !strings.Contains(s, "Ctrl+C quit") {
+		t.Errorf("status line should show Ctrl+C quit: %s", s)
 	}
 }
 
-// TestUpDownNotBlockType prevents regression: Up/Down scroll the viewport
-// but typing regular characters still flows into the textarea.
-func TestKeyboardScrollDoesNotBlockTyping(t *testing.T) {
+// TestArrowKeysFallThroughToTextarea verifies that after removing keyboard
+// viewport scrolling (#34), Up/Down keys fall through to textarea (where they
+// navigate cursor lines). Typing after arrow keys still works.
+func TestArrowKeysFallThroughToTextarea(t *testing.T) {
 	m := newTestModel()
 
-	// Scroll up first
+	// Press Up — falls to textarea (moves cursor, does nothing if single-line)
 	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 
 	// Then type — should reach textarea
 	_, _ = m.Update(tea.KeyPressMsg{Text: "h"})
 	if m.textarea.Value() != "h" {
-		t.Errorf("typing after scrolling: expected 'h', got %q", m.textarea.Value())
+		t.Errorf("typing after arrow key: expected 'h', got %q", m.textarea.Value())
 	}
 }
 
@@ -1407,9 +1367,10 @@ func TestStreamingReasoning_excessiveNewlinesCollapsed(t *testing.T) {
 	}
 }
 
-// TestKeyboardScrollWhileStreaming still scrolls (streaming doesn't block
-// viewport interaction).
-func TestKeyboardScrollWhileStreaming(t *testing.T) {
+// TestArrowKeysDuringStreamingIgnored verifies arrow keys don't affect
+// viewport during streaming (keyboard scrolling removed in #34; textarea is
+// blurred during streaming so arrow keys are no-ops).
+func TestArrowKeysDuringStreamingIgnored(t *testing.T) {
 	m := newTestModel()
 	m.streaming = true
 	m.viewport.SetHeight(10)
@@ -1419,9 +1380,17 @@ func TestKeyboardScrollWhileStreaming(t *testing.T) {
 	m.refreshViewport()
 	m.viewport.GotoBottom()
 
+	// Up during streaming should NOT scroll the viewport (#34)
 	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
-	if m.viewport.AtBottom() {
-		t.Error("viewport should scroll even while streaming")
+	if !m.viewport.AtBottom() {
+		t.Error("viewport should NOT scroll on Up during streaming (#34)")
+	}
+
+	// Re-goto-bottom and try Down
+	m.viewport.GotoBottom()
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	if !m.viewport.AtBottom() {
+		t.Error("viewport should NOT scroll on Down during streaming (#34)")
 	}
 }
 

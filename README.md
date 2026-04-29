@@ -5,7 +5,7 @@ It streams responses from any OpenAI-compatible API right in your terminal.
 
 ## Features
 
-- 🖥️ Full TUI with scrollable chat history (↑↓ keys, slash commands, terminal native scroll)
+- 🖥️ Full TUI with scrollable chat history (mouse wheel / touchpad, slash commands)
 - 🖱️ Native text selection — drag to select, Cmd+C to copy
 - ⚡ Streaming token-by-token responses (SSE) with animated spinner
 - 💭 Reasoning model support — `reasoning_content` rendered in italic, `POOPGO_REASONING_EFFORT` config
@@ -119,7 +119,6 @@ go run ./cmd/poopgo
 | `Ctrl+C`         | Quit                         |
 | `Esc`            | Close palette (command mode) / no-op (normal mode) |
 | `/`              | Open command palette         |
-| `↑`/`↓`          | Scroll chat history (1 line) |
 | `↑`/`↓` in palette | Navigate commands          |
 | Mouse wheel / touchpad | Scroll (terminal-native) |
 | Mouse drag       | Select text (terminal-native → Cmd+C) |

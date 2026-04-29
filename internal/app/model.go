@@ -169,23 +169,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Esc in normal mode is a no-op — only Ctrl+C quits
 
-			// Keyboard scrolling — route to viewport, not textarea.
-		// Mouse mode is off so the terminal handles native text selection.
-		// Up/Down scroll the chat history 1 line at a time.
-		case "up":
-			if !m.commandMode {
-				m.viewport.ScrollUp(1)
-				m.refreshViewport()
-				return m, nil
-			}
-
-		case "down":
-			if !m.commandMode {
-				m.viewport.ScrollDown(1)
-				m.refreshViewport()
-				return m, nil
-			}
-
 		case "enter":
 			if m.streaming {
 				break
@@ -312,8 +295,9 @@ func (m *Model) View() tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
 	// Mouse mode off: terminal handles native text selection (drag-to-select
-	// → clipboard via terminal's native copy: Cmd+C / Ctrl+Shift+C).
-	// Scroll via keyboard arrows (↑/↓/PgUp/PgDn) or slash commands.
+	// → clipboard via terminal's native copy: Cmd+C / Ctrl+Shift+C)
+	// and mouse wheel / touchpad scrolling.
+	// Scroll via slash commands (/scroll-top, /scroll-bottom).
 	v.MouseMode = tea.MouseModeNone
 	return v
 }
@@ -333,7 +317,7 @@ func (m *Model) statusLine() string {
 	if m.streaming {
 		left += " " + m.spinner.View() + " streaming"
 	}
-	right := "↑↓ scroll | Ctrl+C quit"
+	right := "Ctrl+C quit"
 	width := m.width
 	if width < len(left)+len(right)+2 {
 		width = len(left) + len(right) + 2

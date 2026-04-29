@@ -61,7 +61,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - Normal mode에서 `Esc`는 no-op, `Ctrl+C`만 Quit
 - `Enter`: 메시지 전송 or command 실행
 - `Shift+Enter`: textarea에 newline 삽입 (Bubble Tea v2의 Kitty Keyboard Protocol 네이티브 지원 — `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`)
-- `↑`/`↓`: normal mode → viewport 1줄 스크롤 (ScrollUp/ScrollDown). command mode → palette 선택 이동. textarea로 전달 안 함.
+- `↑`/`↓`: command mode → palette 선택 이동. Normal mode → textarea 전달 (커서 이동). Viewport 키보드 스크롤 제거 (#34)
 - 그 외 일반 키: textarea로 전달 → `updateCommandMode()` 호출해 `/` prefix 감지
 - Viewport KeyMap은 비어 있음 (`viewport.KeyMap{}`)
 - 마우스 이벤트: `MouseModeNone` → 터미널이 네이티브 처리 (드래그 선택, 휠 스크롤)
@@ -154,9 +154,8 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 
 ## Known Constraints
 - **Shift+Enter 네이티브 지원**: Bubble Tea v2로 마이그레이션하여 Kitty Keyboard Protocol 네이티브 지원. `Alt+Enter`는 제거됨. `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`로 감지.
-- **마우스 드래그 텍스트 선택**: `MouseModeNone`으로 설정하여 터미널(Ghostty 등)이 네이티브 텍스트 선택을 처리. 선택 후 Cmd+C로 클립보드 복사. 마우스 휠/터치패드 스크롤도 터미널이 처리.
-- **키보드 스크롤**: ↑/↓ 키로 1줄씩 스크롤 (viewport.ScrollUp/ScrollDown). command mode에서는 palette 내비게이션으로 전환.
-- **Viewport KeyMap은 비어 있음** (`viewport.KeyMap{}`) → viewport 자체 키바인딩 없음. 스크롤은 Model.Update에서 ↑/↓를 직접 인터셉트.
+- **Keyboard scrolling removed** (#34): 터미널(Ghostty 등)에서 네이티브 마우스 휠/터치패드 스크롤이 키보드 ↑/↓ 인터셉트와 충돌하여 제거. ↑/↓는 textarea로 전달되어 커서 이동만 담당. Viewport 스크롤은 마우스 휠과 `/scroll-top`, `/scroll-bottom` command로만 가능.
+- **Viewport KeyMap은 비어 있음** (`viewport.KeyMap{}`) → viewport 자체 키바인딩 없음. 스크롤은 마우스 휠(터미널 네이티브)과 `/scroll-top`, `/scroll-bottom` slash command로만 가능.
 - **Viewport SoftWrap 활성화**: `SoftWrap = true`로 설정되어 viewport 폭을 넘는 긴 줄은 자동으로 줄바꿈됨. `bubbles/v2` viewport는 기본값 `SoftWrap = false`이며, false일 경우 `ansi.Cut()`으로 초과분을 잘라내 가로스크롤을 의도하지만 KeyMap이 비어 있어 접근 불가능하므로 반드시 true로 설정해야 함. SoftWrap은 `ansi.Cut(line, idx, maxWidth+idx)`로 문자 단위 분할하며, ANSI escape sequence를 올바르게 처리함.
 - **lipgloss v2 `Style.Render()` 멀티라인 패딩**: lipgloss v2의 `Render()`는 멀티라인 문자열의 각 줄을 최대 너비로 공백 패딩한다. `\n\n` 패턴이 `\n<spaces>\n`으로 변형되어 빈 줄 감지가 깨지므로, 개행 구조가 중요한 콘텐츠에는 `ansi.Style.Styled()`를 대신 사용할 것 (#18). `ansi.Style`은 순수 인라인 스타일링만 적용한다.
 - **Reasoning content 연속 개행 정규화**: `collapseNewlines()`로 렌더링 전에 연속 `\n`을 최대 2개로 축소 (방어적).
@@ -171,8 +170,8 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}`로 Ctrl+C 시뮬레이션
 - `tea.KeyPressMsg{Code: tea.KeyEsc}`로 Esc 시뮬레이션
 - `tea.KeyPressMsg{Code: tea.KeyBackspace}`로 Backspace 시뮬레이션
-- `tea.KeyPressMsg{Code: tea.KeyUp}` / `tea.KeyPressMsg{Code: tea.KeyDown}`으로 키보드 스크롤 시뮬레이션
-- `tea.KeyPressMsg{Code: tea.KeyPgUp}` / `tea.KeyPressMsg{Code: tea.KeyPgDown}`은 사용 안 함 (제거됨)
+- `tea.KeyPressMsg{Code: tea.KeyUp}` / `tea.KeyPressMsg{Code: tea.KeyDown}`으로 command 모드 내비게이션 시뮬레이션 (viewport 키보드 스크롤 제거됨 #34)
+- Scroll test: `m.viewport.ScrollUp(1)` / `m.viewport.ScrollDown(1)` 제거 (#34 — viewport 키보드 스크롤 제거). Arrow keys → textarea fallthrough 확인.
 - `StreamChunkMsg("token")`, `StreamReasoningMsg("token")`, `StreamDoneMsg{Err: err}`로 스트리밍 시뮬레이션
 - `stripANSI()`로 ANSI 이스케이프 제거 후 문자열 검증 — `GetContent()`에서 ANSI 코드가 개행 사이에 끼어 `\n\n` 패턴을 직접 찾을 수 없으므로 반드시 stripANSI 선적용
 - `m.View().Content`로 View 문자열 검증 (v2 View()는 `tea.View` 반환)
