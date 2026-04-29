@@ -95,6 +95,8 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `refreshViewport()`에서 reasoning content는 이탤릭(ANSI `\033[3m`...`\033[23m`)으로 렌더링, `💭 Reasoning` 헤더 포함
 - `StreamReasoningMsg` → Update에서 `StreamChunkMsg`와 동일한 패턴으로 처리 (assistant 슬롯의 `ReasoningContent` 누적)
 - lipgloss v2도 `Italic()` 미지원이므로 raw ANSI escape 사용
+- **중요**: reasoning content에 `sysStyle.Render()`를 적용하지 말 것. lipgloss v2는 멀티라인 `Render()` 호출 시 각 줄을 최대 너비로 공백 패딩하여 빈 줄이 사라지고 `\n\n` 패턴이 깨짐 (#18).
+- **중요**: reasoning content는 `collapseNewlines()`로 연속 `\n`을 최대 2개로 축소 후 렌더링. 실제 reasoning model 출력은 문단 사이에 6~7개 연속 개행을 포함할 수 있으며, 이를 1개 빈 줄(`\n\n`)로 정규화.
 
 ### View (v2 Declarative)
 - `View()`는 `tea.View`를 반환 — `tea.NewView(content)`로 생성
@@ -137,6 +139,8 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - **키보드 스크롤**: ↑/↓ 키로 1줄씩 스크롤 (viewport.ScrollUp/ScrollDown). command mode에서는 palette 내비게이션으로 전환.
 - **Viewport KeyMap은 비어 있음** (`viewport.KeyMap{}`) → viewport 자체 키바인딩 없음. 스크롤은 Model.Update에서 ↑/↓를 직접 인터셉트.
 - **Viewport SoftWrap 활성화**: `SoftWrap = true`로 설정되어 viewport 폭을 넘는 긴 줄은 자동으로 줄바꿈됨. `bubbles/v2` viewport는 기본값 `SoftWrap = false`이며, false일 경우 `ansi.Cut()`으로 초과분을 잘라내 가로스크롤을 의도하지만 KeyMap이 비어 있어 접근 불가능하므로 반드시 true로 설정해야 함. SoftWrap은 `ansi.Cut(line, idx, maxWidth+idx)`로 문자 단위 분할하며, ANSI escape sequence를 올바르게 처리함.
+- **lipgloss v2 `Style.Render()` 멀티라인 패딩**: lipgloss v2의 `Render()`는 멀티라인 문자열의 각 줄을 최대 너비로 공백 패딩한다. `\n\n` 패턴이 `\n<spaces>\n`으로 변형되어 빈 줄 감지가 깨지므로, reasoning content처럼 정확한 개행 구조가 중요한 콘텐츠에는 `Render()`를 사용하지 말 것 (#18).
+- **Reasoning content 연속 개행 정규화**: `collapseNewlines()`로 렌더링 전에 연속 `\n`을 최대 2개로 축소. 실제 reasoning model (DeepSeek, o1 등)의 chain-of-thought 출력은 문단 사이에 과도한 개행(6~7개)을 포함함.
 - **TUI 테스트 한계**: `tea.Program.Run()`은 실제 터미널 필요. Model.Update에 KeyPressMsg 직접 주입하는 방식으로 키 입력 테스트.
 
 ## Testing Guidelines
@@ -151,10 +155,11 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `tea.KeyPressMsg{Code: tea.KeyUp}` / `tea.KeyPressMsg{Code: tea.KeyDown}`으로 키보드 스크롤 시뮬레이션
 - `tea.KeyPressMsg{Code: tea.KeyPgUp}` / `tea.KeyPressMsg{Code: tea.KeyPgDown}`은 사용 안 함 (제거됨)
 - `StreamChunkMsg("token")`, `StreamReasoningMsg("token")`, `StreamDoneMsg{Err: err}`로 스트리밍 시뮬레이션
-- `stripANSI()`로 ANSI 이스케이프 제거 후 문자열 검증
+- `stripANSI()`로 ANSI 이스케이프 제거 후 문자열 검증 — `GetContent()`에서 ANSI 코드가 개행 사이에 끼어 `\n\n` 패턴을 직접 찾을 수 없으므로 반드시 stripANSI 선적용
 - `m.View().Content`로 View 문자열 검증 (v2 View()는 `tea.View` 반환)
 - Reasoning rendering 테스트 시 `\033[3m` (italic on), `\033[23m` (italic off) escape 포함 여부 확인
 - `NewModel`의 `reasoningEffort`, `temperature` 파라미터로 설정 테스트
 - Viewport SoftWrap 테스트: `m.viewport.SoftWrap`이 true인지 확인. `SetWidth(20)` 같은 좁은 폭에서 긴 문자열로 `refreshViewport()` 후 `m.viewport.TotalLineCount() > 1` 확인 (줄바꿈 발생). `m.viewport.GetContent()`로 전체 콘텐츠 보존 여부 확인.
 - `newTestModel()` 헬퍼는 FakeProvider 사용, `NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", NewFakeProvider())` — `reasoningEffort`, `temperature`는 빈 문자열 (6개 인자)
 - Layout 테스트: `m.viewport.Height()`로 viewport 높이 검증. command mode 진입 시 `updateCommandMode()` 호출 후 `m.viewport.Height()`가 축소되었는지 확인. `exitCommandMode()` 후 원복 확인. `WindowSizeMsg`로 resize 시 command mode 상태 반영 확인.
+- **스트리밍 통합 테스트**: `endToEndStreamReasoning()` 헬퍼로 provider.Stream()을 동기 호출하고 토큰을 Update()에 직접 주입하여 전체 스트리밍 플로우 검증. goroutine 불필요.

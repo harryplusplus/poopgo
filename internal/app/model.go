@@ -351,6 +351,16 @@ func (m *Model) statusLine() string {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// collapseNewlines reduces sequences of 3+ consecutive \n to exactly \n\n
+// (one blank line between paragraphs). Used to normalize reasoning content
+// which can have excessive blank lines from the model's chain-of-thought.
+func collapseNewlines(s string) string {
+	for strings.Contains(s, "\n\n\n") {
+		s = strings.ReplaceAll(s, "\n\n\n", "\n\n")
+	}
+	return s
+}
+
 // applyLayout recalculates viewport height based on current terminal
 // size and whether the command palette is showing (issue #33).
 func (m *Model) applyLayout() {
@@ -391,7 +401,12 @@ func (m *Model) refreshViewport() {
 				sb.WriteString(sysStyle.Render(reasoningHeader))
 				sb.WriteString("\n")
 				sb.WriteString(italicOn)
-				sb.WriteString(sysStyle.Render(msg.ReasoningContent))
+				// Do NOT wrap reasoning content in lipgloss Style.Render().
+				// lipgloss v2 pads each line to max width with spaces,
+				// which replaces empty lines with space-padded lines and
+				// breaks \n\n paragraph detection (issue #18).
+				// Collapse excessive consecutive newlines to at most \n\n.
+				sb.WriteString(collapseNewlines(msg.ReasoningContent))
 				sb.WriteString(italicOff)
 				sb.WriteString("\n")
 			}

@@ -1027,6 +1027,81 @@ func TestRefreshViewport_paragraphsInMessage(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Reasoning paragraph spacing regression (issue #18)
+// ---------------------------------------------------------------------------
+
+// TestRefreshViewport_reasoningExcessiveNewlines reproduces the bug where
+// reasoning content from the model contains many consecutive blank lines
+// between chain-of-thought paragraphs. Those should be collapsed to at most
+// one blank line between paragraphs (\n\n).
+func TestRefreshViewport_reasoningExcessiveNewlines(t *testing.T) {
+	m := newTestModel()
+	// Reasoning content with 6 consecutive newlines between paragraphs
+	// (simulating the actual reasoning model output pattern)
+	m.messages = []Message{
+		{Role: "user", Content: "안녕하십니까요?"},
+		{Role: "assistant", Content: "안녕하세요!", ReasoningContent: "We need to parse the user's query.\n\n\n\n\n\nWe need to respond appropriately.\n\n\n\n\n\nThe user's command: We are in a chat interface."},
+	}
+	m.refreshViewport()
+	// Strip ANSI to inspect raw newline structure (lipgloss wraps each line
+	// with color codes which break up consecutive \n sequences in GetContent).
+	content := stripANSI(m.viewport.GetContent())
+
+	// Should have no quadruple+ newline sequences
+	if strings.Contains(content, "\n\n\n\n") {
+		t.Errorf("reasoning content has 4+ consecutive newlines — should be collapsed (#18)\ncontent dump:\n%s", content)
+	}
+	// Triple newline should also be absent (at most \n\n for one blank line)
+	if strings.Contains(content, "\n\n\n") {
+		t.Errorf("reasoning content has triple newline — should be collapsed to at most \\n\\n (#18)\ncontent dump:\n%s", content)
+	}
+}
+
+// TestRefreshViewport_reasoningNormalParagraphs ensures that normal paragraph
+// breaks (\n\n) in reasoning content are preserved (not over-collapsed).
+func TestRefreshViewport_reasoningNormalParagraphs(t *testing.T) {
+	m := newTestModel()
+	m.messages = []Message{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "response", ReasoningContent: "First thought.\n\nSecond thought.\n\nThird thought."},
+	}
+	m.refreshViewport()
+	content := stripANSI(m.viewport.GetContent())
+
+	// Normal paragraph breaks (\n\n) should be preserved
+	if !strings.Contains(content, "First thought.\n\nSecond thought.") {
+		t.Errorf("normal paragraph breaks in reasoning should be preserved (#18)\ncontent dump:\n%s", content)
+	}
+	// But no triple newlines
+	if strings.Contains(content, "\n\n\n") {
+		t.Errorf("triple newlines in reasoning content — regression (#18)\ncontent dump:\n%s", content)
+	}
+}
+
+// TestRefreshViewport_reasoningNewlines_DontAffectContent ensures that the
+// newline normalization only applies to reasoning content, not the regular
+// assistant message content.
+func TestRefreshViewport_reasoningNewlines_DontAffectContent(t *testing.T) {
+	m := newTestModel()
+	// Regular content has paragraph breaks — those should be preserved as-is
+	m.messages = []Message{
+		{Role: "user", Content: "explain"},
+		{Role: "assistant", Content: "Here is a detailed explanation.\n\nIt has multiple paragraphs.\n\nEach with normal spacing.", ReasoningContent: "Let me think.\n\n\n\n\nAbout this."},
+	}
+	m.refreshViewport()
+	content := stripANSI(m.viewport.GetContent())
+
+	// Content paragraph breaks (\n\n) should be preserved
+	if !strings.Contains(content, "detailed explanation.\n\nIt has") {
+		t.Errorf("regular content paragraph breaks should be preserved (#18)\ncontent dump:\n%s", content)
+	}
+	// Reasoning excessive newlines should be collapsed
+	if strings.Contains(content, "Let me think.\n\n\n") {
+		t.Errorf("reasoning excessive newlines should be collapsed (#18)\ncontent dump:\n%s", content)
+	}
+}
+
 func TestViewportHeight_minimumHeight(t *testing.T) {
 	m := newTestModel()
 	m.width = 80
@@ -1140,6 +1215,151 @@ func TestKeyboardScrollDoesNotBlockTyping(t *testing.T) {
 	_, _ = m.Update(tea.KeyPressMsg{Text: "h"})
 	if m.textarea.Value() != "h" {
 		t.Errorf("typing after scrolling: expected 'h', got %q", m.textarea.Value())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Streaming with reasoning — end-to-end simulation (issue #18)
+// ---------------------------------------------------------------------------
+
+// endToEndStreamReasoning creates a Model with a FakeProvider, feeds a user
+// message via Enter, and then simulates the full streaming flow synchronously
+// by calling provider.Stream() with callbacks that feed Update(). Returns the
+// final viewport content (ANSI-stripped).
+func endToEndStreamReasoning(t *testing.T, userMsg string, reasoningEffort string) string {
+	t.Helper()
+	m := newTestModel()
+	m.reasoningEffort = reasoningEffort
+	m.textarea.SetValue(userMsg)
+
+	// Simulate Enter - this appends user msg + empty assistant, sets streaming=true
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if !m.streaming {
+		t.Fatal("expected streaming after Enter")
+	}
+	if len(m.messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	}
+
+	// Simulate the streaming goroutine synchronously, feeding each token
+	// through the Model's Update method (same path as real TUI).
+	nonStreamingMessages := m.messages[:len(m.messages)-1]
+	onToken := func(token string) {
+		_, _ = m.Update(StreamChunkMsg(token))
+	}
+	onReasoningToken := func(token string) {
+		_, _ = m.Update(StreamReasoningMsg(token))
+	}
+	err := m.provider.Stream(nonStreamingMessages, m.chatModel, onToken, onReasoningToken, m.reasoningEffort, m.temperature)
+	if err != nil {
+		t.Fatalf("provider.Stream: %v", err)
+	}
+	_, _ = m.Update(StreamDoneMsg{})
+
+	return stripANSI(m.viewport.GetContent())
+}
+
+// TestStreamingReasoning_noExcessiveNewlines verifies that during a complete
+// streaming flow with reasoning content (FakeProvider emits reasoning when
+// reasoningEffort is set), the viewport does not accumulate excessive blank
+// lines between reasoning paragraphs.
+func TestStreamingReasoning_noExcessiveNewlines(t *testing.T) {
+	content := endToEndStreamReasoning(t, "hello world", "high")
+
+	// FakeProvider with reasoningEffort="high" emits reasoning tokens like:
+	// "🤔 [FAKE REASONING] Thinking with effort=high... "
+	// (no paragraph breaks in fake output, but we verify the rendering path)
+
+	// Content should have no triple+ newlines anywhere
+	if strings.Contains(content, "\n\n\n") {
+		t.Errorf("excessive newlines in viewport after full reasoning stream (#18)\ncontent dump:\n%s", content)
+	}
+
+	// Reasoning header should be present
+	if !strings.Contains(content, "💭 Reasoning") {
+		t.Error("missing reasoning header after streaming")
+	}
+
+	// Fake reasoning content should be present
+	if !strings.Contains(content, "FAKE REASONING") {
+		t.Error("missing fake reasoning content after streaming")
+	}
+
+	// Regular fake provider echo should also be present
+	if !strings.Contains(content, "FAKE PROVIDER") {
+		t.Error("missing fake provider echo after streaming")
+	}
+}
+
+// TestStreamingReasoning_excessiveNewlinesCollapsed uses a custom provider
+// that emits reasoning content with many consecutive newlines between
+// paragraphs (simulating real DeepSeek/OpenAI reasoning model output).
+// Verifies that the viewport collapses these to at most one blank line.
+func TestStreamingReasoning_excessiveNewlinesCollapsed(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("hello")
+
+	// Simulate Enter to create user + empty assistant
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if len(m.messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.messages))
+	}
+
+	// Custom inline provider that emits reasoning with many newlines
+	reasoningParts := []string{
+		"Let me analyze this.",
+		"\n\n\n\n\n\n", // 6 consecutive newlines (simulates model output)
+		"After consideration,",
+		"\n\n\n\n\n\n",
+		"I think the answer is clear.",
+	}
+	contentParts := []string{
+		"Here is my response.",
+	}
+
+	onToken := func(token string) {
+		_, _ = m.Update(StreamChunkMsg(token))
+	}
+	onReasoningToken := func(token string) {
+		_, _ = m.Update(StreamReasoningMsg(token))
+	}
+
+	// Emit reasoning tokens character by character to simulate streaming
+	for _, part := range reasoningParts {
+		for _, ch := range part {
+			onReasoningToken(string(ch))
+		}
+	}
+	for _, part := range contentParts {
+		for _, ch := range part {
+			onToken(string(ch))
+		}
+	}
+
+	_, _ = m.Update(StreamDoneMsg{})
+
+	content := stripANSI(m.viewport.GetContent())
+
+	// Reasoning content should be collapsed: no triple+ newlines
+	if strings.Contains(content, "\n\n\n") {
+		t.Errorf("reasoning content with 6x newlines was not collapsed — found triple+ newlines (#18)\ncontent dump:\n%s", content)
+	}
+
+	// But the reasoning paragraphs should still be separated by one blank line
+	if !strings.Contains(content, "Let me analyze this.\n\nAfter consideration,") {
+		t.Errorf("collapsed reasoning paragraphs missing expected \\n\\n separator (#18)\ncontent dump:\n%s", content)
+	}
+
+	// Content should be intact
+	if !strings.Contains(content, "Here is my response.") {
+		t.Error("regular content missing after streaming")
+	}
+
+	// Verify streaming flag was cleared
+	if m.streaming {
+		t.Error("streaming should be false after StreamDoneMsg")
 	}
 }
 
