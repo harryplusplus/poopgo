@@ -24,7 +24,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 | `cmd/poopgo/main.go` | 진입점 — godotenv 로드, provider 선택, Bubble Tea Program 생성 |
 | `internal/app/model.go` | 메인 Model — viewport, textarea, messages, command palette, spinner, Update/View |
 | `internal/app/model_test.go` | Model 단위 테스트 — 키 입력, 메시지 흐름, 스트리밍, 커맨드 팔레트 |
-| `internal/app/api.go` | 타입 정의 (Message, chatRequest, streamChunk) + SSE 파싱 |
+| `internal/app/api.go` | 타입 정의 (Message, chatRequest, streamChunk) + SSE 파싱 (content + reasoning_content) |
 | `internal/app/api_test.go` | SSE 파싱 + JSON 직렬화 테스트 |
 | `internal/app/provider.go` | StreamProvider 인터페이스 + RealProvider + FakeProvider |
 
@@ -35,22 +35,25 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 | `POOPGO_BASE_URL` | `https://api.openai.com/v1` | Chat completions API base URL |
 | `POOPGO_MODEL` | `gpt-4o` | 모델명 |
 | `POOPGO_PROVIDER` | *(empty → RealProvider)* | `"fake"` → FakeProvider |
+| `POOPGO_REASONING_EFFORT` | *(empty → disabled)* | Reasoning depth: `"low"`, `"medium"`, `"high"` (reasoning models only) |
 
 `.env` 파일로도 설정 가능. `main.go`에서 `godotenv.Load()` 호출.
 
 ## Key Patterns
 
 ### Provider Architecture
-- `StreamProvider` interface: `Stream(messages []Message, model string, onToken func(string)) error`
+- `StreamProvider` interface: `Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort string) error`
 - `RealProvider`: OpenAI 호환 `/chat/completions` API에 HTTP POST → SSE 파싱
-- `FakeProvider`: 마지막 user message를 echo + banner. API 호출 없음, 테스트용
+- `FakeProvider`: 마지막 user message를 echo + banner. `reasoningEffort`가 설정되면 가짜 reasoning 토큰을 먼저 emit. API 호출 없음, 테스트용
 - `main.go`에서 `POOPGO_PROVIDER` env var에 따라 provider 선택
+- `reasoningEffort`는 `main.go` → `NewModel` → `streamResponse()` → `provider.Stream()`으로 전달
 - Model은 provider만 바라보고, HTTP/SSE 디테일을 모름 (의존성 역전)
 
 ### Model Lifecycle
 - `NewModel()` 생성 후 `SetProgram(p *tea.Program)` 호출해야 goroutine에서 `p.Send()` 사용 가능
-- `streamResponse()` → `provider.Stream(messages, model, onToken)` 호출. provider가 모든 HTTP/SSE 로직을 캡슐화
+- `streamResponse()` → `provider.Stream(messages, model, onToken, onReasoningToken, reasoningEffort)` 호출. provider가 모든 HTTP/SSE 로직을 캡슐화
 - `onToken` 콜백이 `p.Send(StreamChunkMsg(token))` 호출 → Model.Update에서 처리
+- `onReasoningToken` 콜백이 `p.Send(StreamReasoningMsg(token))` 호출 → Model.Update에서 동일 패턴으로 처리
 
 ### Key Handling
 - `handleCommandMode()` — command mode 활성 시 `tea.KeyMsg` 인터셉터
@@ -76,10 +79,19 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - Spinner는 `statusLine()`에서 `m.spinner.View()`로 렌더링
 
 ### SSE Parsing
-- `parseSSEStream()` — `data:` 라인에서 JSON content delta 추출
+- `parseSSEStream()` — `data:` 라인에서 JSON content delta 및 reasoning_content delta 추출
 - `[DONE]`에서 종료
 - Malformed JSON은 skip (에러 없음)
 - Scanner buffer: 64KB initial, 1MB max
+- 두 콜백 `onToken` (content), `onReasoningToken` (reasoning_content) — 둘 다 nil 허용
+
+### Reasoning Support
+- Reasoning models (o1, o3 등)은 SSE delta에 `reasoning_content` 필드를 함께 반환
+- `Message.ReasoningContent`는 `json:"-"`로 API 요청에서 제외 (reasoning은 API로 다시 보내지 않음)
+- `chatRequest.ReasoningEffort`는 `json:"reasoning_effort,omitempty"` — 빈 값이면 JSON에서 생략
+- `refreshViewport()`에서 reasoning content는 이탤릭(ANSI `\033[3m`...`\033[23m`)으로 렌더링, `💭 Reasoning` 헤더 포함
+- `StreamReasoningMsg` → Update에서 `StreamChunkMsg`와 동일한 패턴으로 처리 (assistant 슬롯의 `ReasoningContent` 누적)
+- lipgloss v1.1.0에 `Italic()` 없으므로 raw ANSI escape 사용
 
 ### Command Palette
 - `/` 입력 → slash command palette 활성화
@@ -106,5 +118,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}}`로 문자 입력 시뮬레이션
 - `tea.KeyMsg{Type: tea.KeyEnter}`로 Enter 시뮬레이션
 - `tea.KeyMsg{Type: tea.KeyEnter, Alt: true}`로 Alt+Enter 시뮬레이션
-- `StreamChunkMsg("token")`, `StreamDoneMsg{Err: err}`로 스트리밍 시뮬레이션
+- `StreamChunkMsg("token")`, `StreamReasoningMsg("token")`, `StreamDoneMsg{Err: err}`로 스트리밍 시뮬레이션
 - `stripANSI()`로 ANSI 이스케이프 제거 후 문자열 검증
+- Reasoning rendering 테스트 시 `\033[3m` (italic on), `\033[23m` (italic off) escape 포함 여부 확인
+- `NewModel`의 `reasoningEffort` 파라미터로 reasoning depth 설정 테스트

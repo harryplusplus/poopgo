@@ -37,7 +37,9 @@ func main() {
 		initErr = "POOPGO_API_KEY not set. Set it in your environment or .env file."
 	}
 
-	m := app.NewModel(apiKey, apiBase, chatModel, initErr, streamProvider)
+	reasoningEffort := os.Getenv("POOPGO_REASONING_EFFORT")
+
+	m := app.NewModel(apiKey, apiBase, chatModel, reasoningEffort, initErr, streamProvider)
 	p := tea.NewProgram(
 		m,
 		tea.WithAltScreen(),

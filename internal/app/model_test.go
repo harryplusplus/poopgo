@@ -13,7 +13,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func newTestModel() *Model {
-	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", NewFakeProvider())
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", NewFakeProvider())
 	m.width = 100
 	m.height = 30
 	return m
@@ -526,5 +526,94 @@ func TestAppendSystem(t *testing.T) {
 	}
 	if m.messages[0].Content != "test message" {
 		t.Errorf("content: %s", m.messages[0].Content)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Reasoning
+// ---------------------------------------------------------------------------
+
+func TestUpdate_streamReasoningMsg(t *testing.T) {
+	m := newTestModel()
+	m.messages = []Message{
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", Content: "", ReasoningContent: ""},
+	}
+	m.streaming = true
+
+	_, _ = m.Update(StreamReasoningMsg("Let me"))
+	_, _ = m.Update(StreamReasoningMsg(" think"))
+
+	if m.messages[1].ReasoningContent != "Let me think" {
+		t.Errorf("reasoning content: %q", m.messages[1].ReasoningContent)
+	}
+	if m.messages[1].Content != "" {
+		t.Errorf("content should still be empty, got %q", m.messages[1].Content)
+	}
+}
+
+func TestUpdate_streamReasoningMsg_noAssistantSlot(t *testing.T) {
+	m := newTestModel()
+	_, cmd := m.Update(StreamReasoningMsg("orphan"))
+	_ = cmd
+	if len(m.messages) != 0 {
+		t.Errorf("messages should still be empty, got %d", len(m.messages))
+	}
+}
+
+func TestRefreshViewport_reasoningRendered(t *testing.T) {
+	m := newTestModel()
+	m.messages = []Message{
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", Content: "Hello", ReasoningContent: "Let me think about this"},
+	}
+	m.refreshViewport()
+	content := m.viewport.View()
+
+	// Reasoning header and content should be present
+	if !strings.Contains(content, "💭 Reasoning") {
+		t.Error("missing reasoning header")
+	}
+	if !strings.Contains(content, "Let me think about this") {
+		t.Error("missing reasoning content")
+	}
+	// Regular content still rendered
+	if !strings.Contains(content, "Hello") {
+		t.Error("missing regular content")
+	}
+	// Italic ANSI escapes should be present (\033[3m ... \033[23m)
+	if !strings.Contains(content, "\033[3m") {
+		t.Error("missing italic-on escape")
+	}
+	if !strings.Contains(content, "\033[23m") {
+		t.Error("missing italic-off escape")
+	}
+}
+
+func TestRefreshViewport_noReasoningWhenEmpty(t *testing.T) {
+	m := newTestModel()
+	m.messages = []Message{
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", Content: "Hello", ReasoningContent: ""},
+	}
+	m.refreshViewport()
+	content := m.viewport.View()
+
+	if strings.Contains(content, "💭 Reasoning") {
+		t.Error("reasoning header should not appear when ReasoningContent is empty")
+	}
+}
+
+func TestNewModel_reasoningEffortStored(t *testing.T) {
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "high", "", NewFakeProvider())
+	if m.reasoningEffort != "high" {
+		t.Errorf("reasoningEffort = %q, want %q", m.reasoningEffort, "high")
+	}
+}
+
+func TestNewModel_reasoningEffortEmptyByDefault(t *testing.T) {
+	m := newTestModel()
+	if m.reasoningEffort != "" {
+		t.Errorf("reasoningEffort should be empty, got %q", m.reasoningEffort)
 	}
 }

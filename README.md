@@ -7,6 +7,7 @@ It streams responses from any OpenAI-compatible API right in your terminal.
 
 - 🖥️ Full TUI with scrollable chat history (mouse wheel, slash commands)
 - ⚡ Streaming token-by-token responses (SSE) with animated spinner
+- 💭 Reasoning model support — `reasoning_content` rendered in italic, `POOPGO_REASONING_EFFORT` config
 - 🔌 Works with OpenAI, local LLMs (Ollama, LM Studio), or any `/chat/completions` endpoint
 - ⌨️ Slash command palette (`/help`, `/scroll-up`, `/scroll-down`, …)
 - 🧪 Fake provider for UI testing without API calls
@@ -46,6 +47,7 @@ go build -o poopgo ./cmd/poopgo
 | `POOPGO_BASE_URL`  | `https://api.openai.com/v1`    | Base URL of the chat completions API |
 | `POOPGO_MODEL`     | `gpt-4o`                       | Model name                           |
 | `POOPGO_PROVIDER`  | *(empty → real API)*           | `"fake"` for fake provider (no API)  |
+| `POOPGO_REASONING_EFFORT` | *(empty → disabled)*  | Reasoning depth: `"low"`, `"medium"`, `"high"` (for reasoning models like o1/o3) |
 
 All can be set via environment variables or a `.env` file.
 
@@ -75,6 +77,13 @@ go run ./cmd/poopgo
 **Fake provider (no API, no key):**
 ```bash
 export POOPGO_PROVIDER="fake"
+go run ./cmd/poopgo
+```
+
+**Reasoning model with fake provider:**
+```bash
+export POOPGO_PROVIDER="fake"
+export POOPGO_REASONING_EFFORT="high"
 go run ./cmd/poopgo
 ```
 

@@ -22,9 +22,12 @@ type commandItem struct {
 // ---------------------------------------------------------------------------
 
 var (
-	userStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
-	aiStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	sysStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	userStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	aiStyle         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	sysStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	italicOn        = "\033[3m"
+	italicOff       = "\033[23m"
+	reasoningHeader = "💭 Reasoning"
 )
 
 // ---------------------------------------------------------------------------
@@ -44,10 +47,11 @@ type Model struct {
 	streaming    bool
 
 	// Config
-	apiKey    string
-	apiBase   string
-	chatModel string
-	provider  StreamProvider
+	apiKey          string
+	apiBase         string
+	chatModel       string
+	reasoningEffort string
+	provider        StreamProvider
 
 	// Layout
 	width  int
@@ -76,7 +80,7 @@ var defaultCommands = []commandItem{
 
 // NewModel creates a Model with the given configuration.  Call SetProgram
 // after tea.NewProgram to enable streaming.
-func NewModel(apiKey, apiBase, chatModel, initErr string, provider StreamProvider) *Model {
+func NewModel(apiKey, apiBase, chatModel, reasoningEffort, initErr string, provider StreamProvider) *Model {
 	ta := textarea.New()
 	ta.Placeholder = "Message… (/ for commands, Enter to send, Alt+Enter for newline)"
 	ta.CharLimit = 8000
@@ -95,16 +99,17 @@ func NewModel(apiKey, apiBase, chatModel, initErr string, provider StreamProvide
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
 	m := &Model{
-		viewport:  vp,
-		textarea:  ta,
-		spinner:   s,
-		apiKey:    apiKey,
-		apiBase:   apiBase,
-		chatModel: chatModel,
-		initErr:   initErr,
-		provider:  provider,
-		messages:  make([]Message, 0),
-		commands:  defaultCommands,
+		viewport:        vp,
+		textarea:        ta,
+		spinner:         s,
+		apiKey:          apiKey,
+		apiBase:         apiBase,
+		chatModel:       chatModel,
+		reasoningEffort: reasoningEffort,
+		initErr:         initErr,
+		provider:        provider,
+		messages:        make([]Message, 0),
+		commands:        defaultCommands,
 	}
 	m.refreshViewport()
 	return m
@@ -224,6 +229,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoBottom()
 		}
 
+	case StreamReasoningMsg:
+		n := len(m.messages)
+		if n > 0 && m.messages[n-1].Role == "assistant" {
+			m.messages[n-1].ReasoningContent += string(msg)
+			m.refreshViewport()
+			m.viewport.GotoBottom()
+		}
+
 	case StreamDoneMsg:
 		m.streaming = false
 		m.textarea.Focus()
@@ -328,6 +341,14 @@ func (m *Model) refreshViewport() {
 			sb.WriteString("\n")
 			sb.WriteString(aiStyle.Render("🤖 AI"))
 			sb.WriteString("\n")
+			if msg.ReasoningContent != "" {
+				sb.WriteString(sysStyle.Render(reasoningHeader))
+				sb.WriteString("\n")
+				sb.WriteString(italicOn)
+				sb.WriteString(sysStyle.Render(msg.ReasoningContent))
+				sb.WriteString(italicOff)
+				sb.WriteString("\n")
+			}
 			sb.WriteString(msg.Content + "\n")
 		case "system":
 			sb.WriteString("\n")
@@ -493,6 +514,9 @@ func (m *Model) streamResponse() {
 	onToken := func(token string) {
 		m.program.Send(StreamChunkMsg(token))
 	}
-	err := m.provider.Stream(m.messages[:len(m.messages)-1], m.chatModel, onToken)
+	onReasoningToken := func(token string) {
+		m.program.Send(StreamReasoningMsg(token))
+	}
+	err := m.provider.Stream(m.messages[:len(m.messages)-1], m.chatModel, onToken, onReasoningToken, m.reasoningEffort)
 	m.program.Send(StreamDoneMsg{Err: err})
 }
