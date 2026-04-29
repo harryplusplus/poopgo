@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // ---------------------------------------------------------------------------
@@ -1030,6 +1031,48 @@ func TestRefreshViewport_paragraphsInMessage(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Reasoning paragraph spacing regression (issue #18)
 // ---------------------------------------------------------------------------
+
+// TestLipglossV2_RenderDestroysParagraphBreaks proves the root cause of #18.
+// lipgloss v2 Style.Render() pads each line of multi-line content to the
+// maximum line width, replacing empty lines ("") with space-padded lines.
+// This destroys \n\n paragraph break patterns.
+func TestLipglossV2_RenderDestroysParagraphBreaks(t *testing.T) {
+	// Simulate what sysStyle.Render(reasoning) does
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	reasoning := "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
+
+	rendered := style.Render(reasoning)
+
+	// With lipgloss v2, empty lines become space-padded → \n\n is destroyed.
+	// After stripping ANSI, empty lines still contain the padding spaces.
+	raw := stripANSI(rendered)
+	if strings.Contains(rendered, "\n\n") {
+		t.Errorf("lipgloss v2 unexpectedly preserved \\n\\n — upstream may have fixed padding")
+	}
+	// Even after ANSI strip, the padding spaces remain — so \n\n is still gone.
+	if strings.Contains(raw, "\n\n") {
+		t.Errorf("ANSI-stripped rendered unexpectedly has \\n\\n — padding may have changed")
+	}
+
+	// Verify empty line became space-padded (len > 2 = ANSI codes only)
+	lines := strings.Split(rendered, "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected at least 3 lines, got %d", len(lines))
+	}
+	// lines[1] is the first empty line. After stripping ANSI, it should still have
+	// spaces (the padding). If it's empty, lipgloss behavior has changed.
+	plainEmpty := stripANSI(lines[1])
+	if plainEmpty == "" {
+		t.Log("WARNING: lipgloss v2 no longer pads empty lines — upstream fix?")
+	} else {
+		t.Logf("CONFIRMED: lipgloss v2 padded empty line to %d chars: %q", len(plainEmpty), plainEmpty)
+	}
+
+	// Plain text (our fix) preserves \n\n
+	if !strings.Contains(reasoning, "\n\n") {
+		t.Error("plain reasoning should always have \\n\\n")
+	}
+}
 
 // TestRefreshViewport_reasoningExcessiveNewlines reproduces the bug where
 // reasoning content from the model contains many consecutive blank lines

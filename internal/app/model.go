@@ -352,8 +352,10 @@ func (m *Model) statusLine() string {
 // ---------------------------------------------------------------------------
 
 // collapseNewlines reduces sequences of 3+ consecutive \n to exactly \n\n
-// (one blank line between paragraphs). Used to normalize reasoning content
-// which can have excessive blank lines from the model's chain-of-thought.
+// (one blank line between paragraphs). Defensive measure for reasoning models
+// that output excessive blank lines between chain-of-thought paragraphs.
+// The primary fix for #18 was removing sysStyle.Render() from reasoning content
+// (lipgloss v2 pads each line to max width, destroying \n\n patterns).
 func collapseNewlines(s string) string {
 	for strings.Contains(s, "\n\n\n") {
 		s = strings.ReplaceAll(s, "\n\n\n", "\n\n")
@@ -405,7 +407,7 @@ func (m *Model) refreshViewport() {
 				// lipgloss v2 pads each line to max width with spaces,
 				// which replaces empty lines with space-padded lines and
 				// breaks \n\n paragraph detection (issue #18).
-				// Collapse excessive consecutive newlines to at most \n\n.
+				// Also collapse excessive consecutive newlines (defensive).
 				sb.WriteString(collapseNewlines(msg.ReasoningContent))
 				sb.WriteString(italicOff)
 				sb.WriteString("\n")
