@@ -117,7 +117,7 @@ go run ./cmd/poopgo
 | `Enter`          | Send message                 |
 | `Shift+Enter`    | Insert newline               |
 | `Ctrl+C`         | Quit                         |
-| `Esc`            | Close palette (command mode) / no-op (normal mode) |
+| `Esc`            | Cancel stream (streaming) / close palette (command mode) / no-op (normal mode) |
 | `/`              | Open command palette         |
 | `↑`/`↓` in palette | Navigate commands          |
 | Mouse wheel / touchpad | Scroll (terminal-native) |

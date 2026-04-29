@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,8 +16,9 @@ import (
 // onReasoningToken for each reasoning_content delta (reasoning models only).
 // reasoningEffort controls reasoning depth ("low", "medium", "high"); empty means disabled.
 // temperature sets the sampling temperature (0.0-2.0); empty means API default.
+// ctx allows the caller to cancel the stream (e.g., on Esc keypress).
 type StreamProvider interface {
-	Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error
+	Stream(ctx context.Context, messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error
 }
 
 // ---------------------------------------------------------------------------
@@ -36,7 +38,7 @@ func NewRealProvider(apiKey, baseURL string) *RealProvider {
 
 // Stream implements StreamProvider by POSTing to the chat completions endpoint
 // and parsing the SSE response stream.
-func (p *RealProvider) Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error {
+func (p *RealProvider) Stream(ctx context.Context, messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error {
 	payload := chatRequest{
 		Model:           model,
 		Messages:        messages,
@@ -57,7 +59,7 @@ func (p *RealProvider) Stream(messages []Message, model string, onToken, onReaso
 	}
 
 	url := strings.TrimRight(p.baseURL, "/") + "/chat/completions"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -95,11 +97,16 @@ func NewFakeProvider() *FakeProvider {
 // fake-provider banner. If reasoningEffort is set, emits fake reasoning tokens
 // first. Temperature is echoed but not applied. Each character is emitted as
 // a separate token to exercise the streaming path.
-func (p *FakeProvider) Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error {
+func (p *FakeProvider) Stream(ctx context.Context, messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error {
 	// Emit fake reasoning if reasoningEffort is set
 	if reasoningEffort != "" && onReasoningToken != nil {
 		reasoning := "🤔 [FAKE REASONING] Thinking with effort=" + reasoningEffort + "... "
 		for _, ch := range reasoning {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
 			onReasoningToken(string(ch))
 		}
 	}
@@ -116,6 +123,11 @@ func (p *FakeProvider) Stream(messages []Message, model string, onToken, onReaso
 	}
 
 	for _, ch := range echo {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		onToken(string(ch))
 	}
 	return nil

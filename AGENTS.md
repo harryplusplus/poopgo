@@ -63,9 +63,9 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 ## Key Patterns
 
 ### Provider Architecture
-- `StreamProvider` interface: `Stream(messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error`
-- `RealProvider`: OpenAI 호환 `/chat/completions` API에 HTTP POST → SSE 파싱. `temperature`가 비어있지 않으면 `strconv.ParseFloat`로 파싱해 `chatRequest.Temperature`에 `*float32`로 주입.
-- `FakeProvider`: 마지막 user message를 echo + banner. `reasoningEffort`가 설정되면 가짜 reasoning 토큰을 먼저 emit. `temperature`가 설정되면 echo에 🌡️ 표시. API 호출 없음, 테스트용
+- `StreamProvider` interface: `Stream(ctx context.Context, messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error`
+- `RealProvider`: OpenAI 호환 `/chat/completions` API에 HTTP POST → SSE 파싱. `ctx`로 `http.NewRequestWithContext`를 통해 취소 가능 (#35). `temperature`가 비어있지 않으면 `strconv.ParseFloat`로 파싱해 `chatRequest.Temperature`에 `*float32`로 주입.
+- `FakeProvider`: 마지막 user message를 echo + banner. `ctx.Done()` 체크로 취소 대응 (#35). `reasoningEffort`가 설정되면 가짜 reasoning 토큰을 먼저 emit. `temperature`가 설정되면 echo에 🌡️ 표시. API 호출 없음, 테스트용
 - `main.go`에서 `POOPGO_PROVIDER` env var에 따라 provider 선택
 - `reasoningEffort`와 `temperature`는 `main.go` → `NewModel` → `streamResponse()` → `provider.Stream()`으로 전달
 - Model은 provider만 바라보고, HTTP/SSE 디테일을 모름 (의존성 역전)
@@ -80,7 +80,8 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 ### Key Handling
 - `handleCommandMode()` — command mode 활성 시 `tea.KeyPressMsg` 인터셉터
 - Command mode에서 `Esc`/`Ctrl+C`는 palette만 닫기 (Quit 안 함)
-- Normal mode에서 `Esc`는 no-op, `Ctrl+C`만 Quit
+- Normal mode에서 `Esc`: streaming 중이면 stream cancel (#35), 아니면 no-op
+- Normal mode에서 `Ctrl+C`만 Quit
 - `Enter`: 메시지 전송 or command 실행
 - `Shift+Enter`: textarea에 newline 삽입 (Bubble Tea v2의 Kitty Keyboard Protocol 네이티브 지원 — `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`)
 - `↑`/`↓`: command mode → palette 선택 이동. Normal mode → textarea 전달 (커서 이동). Viewport 키보드 스크롤 제거 (#34)
@@ -95,6 +96,13 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 4. Provider가 토큰마다 `onToken` 콜백 → `p.Send(StreamChunkMsg)`
 5. Model.Update의 `StreamChunkMsg` case에서 assistant message content 누적
 6. 완료 시 `p.Send(StreamDoneMsg{Err: err})` → `streaming = false`, spinner 정지, textarea 재포커스
+
+### Streaming Cancellation (#35)
+- `streamResponse()`에서 `context.WithCancel(context.Background())`로 ctx 생성 → `m.cancel`에 cancel func 저장
+- Provider.Stream의 첫 인자는 `context.Context` — RealProvider는 `http.NewRequestWithContext`, FakeProvider는 token loop에서 `select { case <-ctx.Done(): return ctx.Err() }`로 취소 감지
+- Esc 입력 시 (`m.streaming && m.cancel != nil`): `m.cancel()` 호출, `m.cancel = nil`로 클리어, `"⚠️  Cancelled."` system message 추가
+- StreamDoneMsg 수신 시: `errors.Is(msg.Err, context.Canceled)`면 Error system message 생략 (이미 Cancelled 표시). 그 외 error는 기존대로 `❌ Error: ...` 표시
+- `m.cancel = nil` 클리어로 double-Esc 안전 (이미 cancel된 후 Esc는 no-op)
 
 ### Spinner Lifecycle
 - `spinner.Dot` (브라유 점) 사용, color "6" (cyan)
@@ -182,6 +190,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - **lipgloss v2 `Style.Render()` 멀티라인 패딩**: lipgloss v2의 `Render()`는 멀티라인 문자열의 각 줄을 최대 너비로 공백 패딩한다. `\n\n` 패턴이 `\n<spaces>\n`으로 변형되어 빈 줄 감지가 깨지므로, 개행 구조가 중요한 콘텐츠에는 `ansi.Style.Styled()`를 대신 사용할 것 (#18). `ansi.Style`은 순수 인라인 스타일링만 적용한다.
 - **Reasoning content 개행 보존**: `ansi.Style.Styled()`는 순수 인라인 스타일링만 적용하며 모든 개행을 그대로 보존. 모델 출력을 faithful하게 렌더링.
 - **TUI 테스트 한계**: `tea.Program.Run()`은 실제 터미널 필요. Model.Update에 KeyPressMsg 직접 주입하는 방식으로 키 입력 테스트.
+- **Esc cancel (#35)**: Esc로 스트리밍 응답을 취소할 수 있다. `context.WithCancel`로 구현, `StreamProvider.Stream` 첫 인자 `ctx context.Context`. RealProvider는 `http.NewRequestWithContext`, FakeProvider는 token loop에서 `ctx.Done()` 체크. `StreamDoneMsg` 수신 시 `context.Canceled`는 Error system message 생략 ("Cancelled"가 이미 표시됨).
 
 ## Testing Guidelines
 - 모든 테스트는 네트워크 불필요 (FakeProvider 사용)

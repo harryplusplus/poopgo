@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -60,6 +62,10 @@ type Model struct {
 
 	// Spinner shown during streaming
 	spinner spinner.Model
+
+	// Cancel function for the current stream (nil when not streaming).
+	// Called on Esc during streaming to abort the provider call.
+	cancel context.CancelFunc
 
 	// Command palette (triggered by "/" at start)
 	commandMode      bool
@@ -167,6 +173,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.refreshViewport()
 				return m, nil
 			}
+			// Esc during streaming cancels the stream (#35)
+			if m.streaming && m.cancel != nil {
+				m.cancel()
+				m.cancel = nil
+				m.appendSystem("⚠️  Cancelled.")
+				m.refreshViewport()
+				m.viewport.GotoBottom()
+				return m, nil
+			}
 			// Esc in normal mode is a no-op — only Ctrl+C quits
 
 		case "enter":
@@ -240,8 +255,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StreamDoneMsg:
 		m.streaming = false
+		m.cancel = nil
 		m.textarea.Focus()
-		if msg.Err != nil {
+		if msg.Err != nil && !errors.Is(msg.Err, context.Canceled) {
 			m.appendSystem(fmt.Sprintf("❌ Error: %v", msg.Err))
 		}
 		m.refreshViewport()
@@ -549,12 +565,15 @@ func (m *Model) streamResponse() {
 	if m.program == nil {
 		return
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+
 	onToken := func(token string) {
 		m.program.Send(StreamChunkMsg(token))
 	}
 	onReasoningToken := func(token string) {
 		m.program.Send(StreamReasoningMsg(token))
 	}
-	err := m.provider.Stream(m.messages[:len(m.messages)-1], m.chatModel, onToken, onReasoningToken, m.reasoningEffort, m.temperature)
+	err := m.provider.Stream(ctx, m.messages[:len(m.messages)-1], m.chatModel, onToken, onReasoningToken, m.reasoningEffort, m.temperature)
 	m.program.Send(StreamDoneMsg{Err: err})
 }

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -797,6 +799,7 @@ func TestFakeProvider_temperatureEchoed(t *testing.T) {
 	// Reconstruct what streamResponse does — call provider.Stream directly.
 	var contentTokens []string
 	err := m.provider.Stream(
+		context.Background(),
 		[]Message{{Role: "user", Content: "hello"}},
 		"gpt-4o",
 		func(tok string) { contentTokens = append(contentTokens, tok) },
@@ -866,6 +869,7 @@ func TestFakeProvider_temperatureNotEchoedWhenEmpty(t *testing.T) {
 	m := newTestModel()
 	var contentTokens []string
 	err := m.provider.Stream(
+		context.Background(),
 		[]Message{{Role: "user", Content: "hello"}},
 		"gpt-4o",
 		func(tok string) { contentTokens = append(contentTokens, tok) },
@@ -1241,7 +1245,7 @@ func endToEndStreamReasoning(t *testing.T, userMsg string, reasoningEffort strin
 	onReasoningToken := func(token string) {
 		_, _ = m.Update(StreamReasoningMsg(token))
 	}
-	err := m.provider.Stream(nonStreamingMessages, m.chatModel, onToken, onReasoningToken, m.reasoningEffort, m.temperature)
+	err := m.provider.Stream(context.Background(), nonStreamingMessages, m.chatModel, onToken, onReasoningToken, m.reasoningEffort, m.temperature)
 	if err != nil {
 		t.Fatalf("provider.Stream: %v", err)
 	}
@@ -1372,6 +1376,176 @@ func TestArrowKeysDuringStreamingIgnored(t *testing.T) {
 	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	if !m.viewport.AtBottom() {
 		t.Error("viewport should NOT scroll on Down during streaming (#34)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Esc cancels streaming (issue #35)
+// ---------------------------------------------------------------------------
+
+// TestCancelStreaming_escCancelsStream verifies that Esc during streaming
+// cancels the stream, shows a "Cancelled" system message, stops streaming,
+// and preserves partial response.
+func TestCancelStreaming_escCancelsStream(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("hello")
+
+	// Start streaming (simulate Enter)
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if !m.streaming {
+		t.Fatal("expected streaming after Enter")
+	}
+	// In real TUI, streamResponse() goroutine sets cancel via context.WithCancel.
+	// In unit tests the goroutine may not have run yet — set it manually.
+	cancelled := false
+	m.cancel = func() { cancelled = true }
+
+	// Feed some tokens to build partial response
+	_, _ = m.Update(StreamChunkMsg("Hello"))
+	_, _ = m.Update(StreamChunkMsg(" world"))
+
+	// Press Esc to cancel
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	_ = cmd
+
+	// Esc during streaming should NOT quit (only Ctrl+C quits)
+	if cmd != nil {
+		t.Fatal("Esc during streaming should not return a quit command")
+	}
+
+	// Should have a system message about cancellation
+	hasCancelled := false
+	for _, msg := range m.messages {
+		if msg.Role == "system" && strings.Contains(msg.Content, "Cancelled") {
+			hasCancelled = true
+		}
+	}
+	if !hasCancelled {
+		t.Error("expected 'Cancelled' system message after Esc")
+	}
+
+	// Cancel func should be cleared so double-Esc is safe
+	if m.cancel != nil {
+		t.Error("cancel func should be cleared after Esc")
+	}
+	// Cancel func should have been called
+	if !cancelled {
+		t.Error("cancel func should have been called by Esc")
+	}
+
+	// Partial assistant content should be preserved
+	if m.messages[1].Content != "Hello world" {
+		t.Errorf("partial response should be preserved, got %q", m.messages[1].Content)
+	}
+}
+
+// TestCancelStreaming_streamDoneAfterCancel suppresses the context.Canceled
+// error — the "Cancelled" system message already informs the user.
+func TestCancelStreaming_streamDoneAfterCancel(t *testing.T) {
+	m := newTestModel()
+	m.streaming = true
+	m.messages = []Message{
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", Content: "partial"},
+	}
+
+	// Simulate StreamDoneMsg with context.Canceled error (what the provider returns)
+	_, _ = m.Update(StreamDoneMsg{Err: context.Canceled})
+
+	if m.streaming {
+		t.Error("streaming should be false after StreamDoneMsg")
+	}
+
+	// Should NOT have an error system message for context.Canceled
+	for _, msg := range m.messages {
+		if msg.Role == "system" && strings.Contains(msg.Content, "Canceled") {
+			// "Cancelled" from user Esc is fine; "context canceled" from Go is not
+			if strings.Contains(msg.Content, "context") {
+				t.Errorf("context.Canceled should not produce error message: %s", msg.Content)
+			}
+		}
+	}
+}
+
+// TestCancelStreaming_streamDoneWithOtherError still shows the error.
+func TestCancelStreaming_streamDoneWithOtherError(t *testing.T) {
+	m := newTestModel()
+	m.streaming = true
+	m.messages = []Message{
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", Content: "partial"},
+	}
+
+	_, _ = m.Update(StreamDoneMsg{Err: fmt.Errorf("network timeout")})
+
+	hasErr := false
+	for _, msg := range m.messages {
+		if msg.Role == "system" && strings.Contains(msg.Content, "Error") && strings.Contains(msg.Content, "network timeout") {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected error system message for non-cancel errors")
+	}
+}
+
+// TestCancelStreaming_escNoopWhenNotStreaming verifies Esc in normal mode
+// (not streaming) remains a no-op (does NOT quit — Ctrl+C only).
+func TestCancelStreaming_escNoopWhenNotStreaming(t *testing.T) {
+	m := newTestModel()
+
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("Esc in normal mode (not streaming) should be no-op")
+	}
+}
+
+// TestCancelStreaming_escNoopWhenCancelIsNil verifies double-Esc doesn't
+// panic — after cancel is cleared, Esc is no-op.
+func TestCancelStreaming_escNoopWhenCancelIsNil(t *testing.T) {
+	m := newTestModel()
+	m.streaming = true
+	m.cancel = nil // simulate already-cancelled state
+
+	// Should not panic
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	_ = cmd
+}
+
+// TestCancelStreaming_fakeProviderRespectsCancel verifies the FakeProvider
+// stops emitting tokens when the context is cancelled.
+func TestCancelStreaming_fakeProviderRespectsCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var tokens []string
+	onToken := func(tok string) {
+		tokens = append(tokens, tok)
+	}
+
+	// Cancel immediately — provider should return before emitting all tokens
+	cancel()
+
+	p := NewFakeProvider()
+	err := p.Stream(ctx,
+		[]Message{{Role: "user", Content: "hello"}},
+		"gpt-4o",
+		onToken,
+		nil,
+		"",
+		"",
+	)
+
+	if err == nil {
+		t.Error("expected error from cancelled context")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got %v", err)
+	}
+	// Should have emitted 0 or very few tokens (not the full echo)
+	full := strings.Join(tokens, "")
+	if strings.Contains(full, "POOPGO_PROVIDER=fake") {
+		t.Error("fake provider should not emit full response after cancel")
 	}
 }
 
