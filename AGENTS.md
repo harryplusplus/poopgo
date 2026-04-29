@@ -182,3 +182,58 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `newTestModel()` 헬퍼는 FakeProvider 사용, `NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", NewFakeProvider())` — `reasoningEffort`, `temperature`는 빈 문자열 (6개 인자)
 - Layout 테스트: `m.viewport.Height()`로 viewport 높이 검증. command mode 진입 시 `updateCommandMode()` 호출 후 `m.viewport.Height()`가 축소되었는지 확인. `exitCommandMode()` 후 원복 확인. `WindowSizeMsg`로 resize 시 command mode 상태 반영 확인.
 - **스트리밍 통합 테스트**: `endToEndStreamReasoning()` 헬퍼로 provider.Stream()을 동기 호출하고 토큰을 Update()에 직접 주입하여 전체 스트리밍 플로우 검증. goroutine 불필요.
+
+## tmux 기반 TUI 통합 테스트
+
+실제 터미널 렌더링 결과를 확인해야 할 때 (ANSI escape, viewport 레이아웃, 스크롤 동작 등).
+
+### 기본 패턴
+
+```bash
+SESSION="poopgo_test_$$"
+tmux kill-session -t "$SESSION" 2>/dev/null
+
+# 1. detached session으로 실행 (-x -y로 터미널 크기 지정)
+tmux new-session -d -s "$SESSION" -x 100 -y 30 \
+  "POOPGO_PROVIDER=fake go run ./cmd/poopgo"
+sleep 2  # TUI 초기화 대기
+
+# 2. send-keys로 입력 시뮬레이션
+tmux send-keys -t "$SESSION" "hello world"
+tmux send-keys -t "$SESSION" Enter
+sleep 1  # 스트리밍 완료 대기
+
+# 3. capture-pane으로 화면 캡처 (-e: escape sequence 보존)
+tmux capture-pane -t "$SESSION" -p -e > /tmp/output.txt
+
+# 4. 정리
+tmux kill-session -t "$SESSION" 2>/dev/null
+```
+
+### 실제 API 테스트 (.env 로드)
+
+```bash
+tmux new-session -d -s "$SESSION" -x 100 -y 30 \
+  "set -a; . ./.env; set +a; go run ./cmd/poopgo"
+sleep 3
+tmux send-keys -t "$SESSION" "안녕하십니까요?" Enter
+sleep 25  # real API 응답 대기 (모델/네트워크에 따라 조정)
+tmux capture-pane -t "$SESSION" -p -e > /tmp/real_output.txt
+tmux kill-session -t "$SESSION"
+```
+
+### 캡처 분석
+
+```bash
+# 연속 빈 줄 개수 확인
+awk 'BEGIN{max=0;cur=0} /^$/{cur++; if(cur>max)max=cur} !/^$/{cur=0} END{print "max blank:", max}' /tmp/output.txt
+
+# ANSI 코드와 함께 확인
+cat -v /tmp/output.txt | head -30
+```
+
+### 주의
+- `-x -y`로 충분한 크기 지정하지 않으면 viewport가 잘림
+- `send-keys`는 실제 키 입력을 시뮬레이션 — 키바인딩 그대로 동작
+- real API 사용 시 응답 시간이 가변적이므로 `sleep`을 충분히
+- `capture-pane -e`로 ANSI escape를 보존해야 스타일링 확인 가능
