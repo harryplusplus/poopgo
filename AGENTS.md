@@ -12,6 +12,26 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - **`README.md`** — 사용자 대상 문서. 기능, 설정, 키바인딩, 실행 예제, 테스트 방법이 기술되어 있다. 프로젝트의 겉모습을 이해하는 데 필수.
 - **`AGENTS.md`** (이 파일) — AI 작업자 대상 문서. 구조, 패턴, 제약사항, 테스트 가이드가 기술되어 있다. 코드 수정/작성 시 참고.
 
+## Coding Principles
+
+### 불필요한 방어 코드는 작성하지 않는다
+진짜 원인을 fix했으면 임시방편(defensive) 코드는 반드시 제거한다.
+예: `collapseNewlines()` — #18의 진짜 fix는 `sysStyle.Render()` → `ansi.Style.Styled()` 교체였다.
+`collapseNewlines`는 남아있으면 "이게 왜 필요하지?"라는 혼란을 AI 작업자에게 준다. 제거.
+
+### 죽은 코드는 바로 삭제한다
+사용하지 않는 코드는 git history에 맡기고 지금 파일에서는 지운다.
+"나중에 필요할지도 모른다"는 유혹에 저항할 것. Git이 기억한다.
+
+### 히스토리는 얇고 단순하게 평탄화한다
+이슈 추적은 커밋 메시지에 명확히 기록하고, 코드 자체는 현재 정답만 담는다.
+fix → revert → re-fix 같은 진동은 squash/rebase로 평탄화. 이슈 번호를 숨기라는 게 아니라,
+명확하게 공유하되 불필요한 왕복 히스토리를 남기지 말라는 뜻.
+
+### 복잡도는 정당화되어야 한다
+함수, 분기, 추상화 하나를 추가할 때마다 "이게 없으면 무엇이 깨지는가?"를 물을 것.
+답이 "아무것도 안 깨진다"면 넣지 않는다.
+
 ## Commands
 - `go build ./...`        빌드
 - `go run ./cmd/poopgo`   실행 (fake provider: `POOPGO_PROVIDER=fake go run ./cmd/poopgo`)
