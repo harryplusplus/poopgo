@@ -363,12 +363,10 @@ func (m *Model) refreshViewport() {
 	for _, msg := range m.messages {
 		switch msg.Role {
 		case "user":
-			sb.WriteString("\n")
 			sb.WriteString(userStyle.Render("🧑 You"))
 			sb.WriteString("\n")
 			sb.WriteString(msg.Content + "\n")
 		case "assistant":
-			sb.WriteString("\n")
 			sb.WriteString(aiStyle.Render("🤖 AI"))
 			sb.WriteString("\n")
 			if msg.ReasoningContent != "" {
@@ -381,7 +379,6 @@ func (m *Model) refreshViewport() {
 			}
 			sb.WriteString(msg.Content + "\n")
 		case "system":
-			sb.WriteString("\n")
 			sb.WriteString(sysStyle.Render(msg.Content))
 			sb.WriteString("\n")
 		}

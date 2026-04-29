@@ -977,6 +977,55 @@ func TestViewportHeight_windowSizeInCommandMode(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Paragraph spacing regression (issue #32)
+// ---------------------------------------------------------------------------
+
+func TestRefreshViewport_noDoubleSpacingBetweenMessages(t *testing.T) {
+	m := newTestModel()
+	m.messages = []Message{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "hi there"},
+		{Role: "user", Content: "how are you?"},
+		{Role: "assistant", Content: "great"},
+	}
+	m.refreshViewport()
+	// GetContent() returns the raw set content without viewport View() line padding.
+	content := m.viewport.GetContent()
+
+	// Between messages there should be exactly 1 blank line, not 2+.
+	// Before the fix, each message had a leading \n before the role header,
+	// causing trailing \n + leading \n + role \n = \n\n\n potential triple.
+	if strings.Contains(content, "\n\n\n") {
+		t.Errorf("paragraph spacing regression (#32): found triple newline, messages have double spacing\ncontent dump:\n%s", content)
+	}
+}
+
+func TestRefreshViewport_paragraphsInMessage(t *testing.T) {
+	m := newTestModel()
+	// Simulate an assistant message with multi-paragraph content (like real LLM output)
+	m.messages = []Message{
+		{Role: "user", Content: "explain async/await"},
+		{Role: "assistant", Content: "Async/await is a pattern for handling asynchronous operations.\n\nIt makes async code look synchronous.\n\nThis avoids callback hell."},
+	}
+	m.refreshViewport()
+	// GetContent() returns the raw content string set into the viewport, before
+	// line padding. Use this (not View()) to inspect paragraph breaks.
+	content := m.viewport.GetContent()
+
+	// The paragraphs from the LLM (with \n\n) should be preserved
+	if !strings.Contains(content, "handling asynchronous operations.\n\nIt makes") {
+		t.Errorf("multi-paragraph message content not preserved correctly (#32)\ncontent dump:\n%s", content)
+	}
+
+	// But there should be no triple-newline between the role header and content.
+	// Before the fix, the leading \n before each role header caused double
+	// spacing: previous msg trailing \n + leading \n + role \n = potential \n\n\n.
+	if strings.Contains(content, "\n\n\n") {
+		t.Errorf("triple newlines found — paragraph spacing regression (#32)\ncontent dump:\n%s", content)
+	}
+}
+
 func TestViewportHeight_minimumHeight(t *testing.T) {
 	m := newTestModel()
 	m.width = 80
