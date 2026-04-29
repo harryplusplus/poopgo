@@ -5,11 +5,12 @@ It streams responses from any OpenAI-compatible API right in your terminal.
 
 ## Features
 
-- 🖥️ Full TUI with scrollable chat history (mouse wheel, slash commands)
+- 🖥️ Full TUI with scrollable chat history (↑↓ keys, slash commands, terminal native scroll)
+- 🖱️ Native text selection — drag to select, Cmd+C to copy
 - ⚡ Streaming token-by-token responses (SSE) with animated spinner
 - 💭 Reasoning model support — `reasoning_content` rendered in italic, `POOPGO_REASONING_EFFORT` config
 - 🔌 Works with OpenAI, local LLMs (Ollama, LM Studio), or any `/chat/completions` endpoint
-- ⌨️ Slash command palette (`/help`, `/scroll-up`, `/scroll-down`, …)
+- ⌨️ Slash command palette (`/help`, `/scroll-top`, `/scroll-bottom`)
 - 🧪 Fake provider for UI testing without API calls
 
 ## Quick Start
@@ -101,9 +102,11 @@ go run ./cmd/poopgo
 | `Ctrl+C`         | Quit                         |
 | `Esc`            | Close palette (command mode) / no-op (normal mode) |
 | `/`              | Open command palette         |
-| Mouse wheel      | Scroll chat history          |
+| `↑`/`↓`          | Scroll chat history (1 line) |
+| `↑`/`↓` in palette | Navigate commands          |
+| Mouse wheel / touchpad | Scroll (terminal-native) |
+| Mouse drag       | Select text (terminal-native → Cmd+C) |
 | Spinner in status | Appears while AI is responding |
-| `↑`/`↓` in palette | Navigate commands         |
 
 ### Slash Commands
 
@@ -112,8 +115,6 @@ Type `/` at the start of a message to open the command palette:
 | Command           | Description         |
 |-------------------|---------------------|
 | `/help`           | Show all commands   |
-| `/scroll-up`      | Page up             |
-| `/scroll-down`    | Page down           |
 | `/scroll-top`     | Scroll to top       |
 | `/scroll-bottom`  | Scroll to bottom    |
 

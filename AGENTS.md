@@ -61,8 +61,10 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - Normal mode에서 `Esc`는 no-op, `Ctrl+C`만 Quit
 - `Enter`: 메시지 전송 or command 실행
 - `Shift+Enter`: textarea에 newline 삽입 (Bubble Tea v2의 Kitty Keyboard Protocol 네이티브 지원 — `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`)
+- `↑`/`↓`: normal mode → viewport 1줄 스크롤 (ScrollUp/ScrollDown). command mode → palette 선택 이동. textarea로 전달 안 함.
 - 그 외 일반 키: textarea로 전달 → `updateCommandMode()` 호출해 `/` prefix 감지
-- Viewport KeyMap은 비어 있음 (`viewport.KeyMap{}`) → 키 스크롤 불가, 마우스 휠 또는 slash command로만 스크롤
+- Viewport KeyMap은 비어 있음 (`viewport.KeyMap{}`)
+- 마우스 이벤트: `MouseModeNone` → 터미널이 네이티브 처리 (드래그 선택, 휠 스크롤)
 
 ### Streaming Flow
 1. 사용자가 Enter → `messages`에 user + empty assistant 추가 → `streaming = true`
@@ -96,19 +98,22 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 
 ### View (v2 Declarative)
 - `View()`는 `tea.View`를 반환 — `tea.NewView(content)`로 생성
-- `v.AltScreen = true`, `v.MouseMode = tea.MouseModeCellMotion`으로 v1의 `WithAltScreen()`, `WithMouseCellMotion()` 대체
+- `v.AltScreen = true`
+- `v.MouseMode = tea.MouseModeNone` — 마우스 이벤트 off, 터미널이 네이티브 텍스트 선택 및 스크롤 처리
 - bubbles 컴포넌트(textarea, viewport, spinner)의 `View()`는 여전히 `string` 반환
 
 ### Command Palette
 - `/` 입력 → slash command palette 활성화
-- Commands: `/help`, `/scroll-up`, `/scroll-down`, `/scroll-top`, `/scroll-bottom`
+- Commands: `/help`, `/scroll-top`, `/scroll-bottom`
+- `/scroll-up`, `/scroll-down` 제거 — 터미널(Ghostty)이 네이티브 스크롤 처리
 - `updateCommandMode()`가 textarea 값 기반으로 `filteredCommands` 필터링
-- `executeCommand()`가 실제 동작 수행 (viewport `PageUp()`/`PageDown()` 호출 — v2에서 `ViewUp()`/`ViewDown()`이 `PageUp()`/`PageDown()`으로 변경됨)
+- `executeCommand()`가 실제 동작 수행 (viewport `GotoTop()`/`GotoBottom()` 호출)
 
 ### Layout (`applyLayout()`)
 - `applyLayout()` — viewport height를 현재 terminal 크기와 command palette 상태에 따라 재계산
 - Normal mode: viewport height = terminal height − 5 (separator 1 + textarea 3 + status 1)
 - Command mode: viewport height = terminal height − 5 − (len(commands) + 2) — palette가 viewport 아래 공간을 차지하므로 viewport를 축소하여 clipping 방지 (#33)
+- commands 개수에 따라 overhead 동적 계산 (현재 3개: /help, /scroll-top, /scroll-bottom)
 - 호출 시점: `WindowSizeMsg` 수신, `updateCommandMode()` (palette 진입), `exitCommandMode()` (palette 종료)
 - 최소 viewport height는 1로 clamp
 
@@ -128,7 +133,9 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 
 ## Known Constraints
 - **Shift+Enter 네이티브 지원**: Bubble Tea v2로 마이그레이션하여 Kitty Keyboard Protocol 네이티브 지원. `Alt+Enter`는 제거됨. `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`로 감지.
-- **Viewport 키 스크롤 불가**: viewport.KeyMap이 비어 있어 화살표/PgUp/PgDn으로 채팅 스크롤 불가. 마우스 휠 또는 slash command(`/scroll-up`, `/scroll-down`) 사용.
+- **마우스 드래그 텍스트 선택**: `MouseModeNone`으로 설정하여 터미널(Ghostty 등)이 네이티브 텍스트 선택을 처리. 선택 후 Cmd+C로 클립보드 복사. 마우스 휠/터치패드 스크롤도 터미널이 처리.
+- **키보드 스크롤**: ↑/↓ 키로 1줄씩 스크롤 (viewport.ScrollUp/ScrollDown). command mode에서는 palette 내비게이션으로 전환.
+- **Viewport KeyMap은 비어 있음** (`viewport.KeyMap{}`) → viewport 자체 키바인딩 없음. 스크롤은 Model.Update에서 ↑/↓를 직접 인터셉트.
 - **Viewport SoftWrap 활성화**: `SoftWrap = true`로 설정되어 viewport 폭을 넘는 긴 줄은 자동으로 줄바꿈됨. `bubbles/v2` viewport는 기본값 `SoftWrap = false`이며, false일 경우 `ansi.Cut()`으로 초과분을 잘라내 가로스크롤을 의도하지만 KeyMap이 비어 있어 접근 불가능하므로 반드시 true로 설정해야 함. SoftWrap은 `ansi.Cut(line, idx, maxWidth+idx)`로 문자 단위 분할하며, ANSI escape sequence를 올바르게 처리함.
 - **TUI 테스트 한계**: `tea.Program.Run()`은 실제 터미널 필요. Model.Update에 KeyPressMsg 직접 주입하는 방식으로 키 입력 테스트.
 
@@ -141,6 +148,8 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}`로 Ctrl+C 시뮬레이션
 - `tea.KeyPressMsg{Code: tea.KeyEsc}`로 Esc 시뮬레이션
 - `tea.KeyPressMsg{Code: tea.KeyBackspace}`로 Backspace 시뮬레이션
+- `tea.KeyPressMsg{Code: tea.KeyUp}` / `tea.KeyPressMsg{Code: tea.KeyDown}`으로 키보드 스크롤 시뮬레이션
+- `tea.KeyPressMsg{Code: tea.KeyPgUp}` / `tea.KeyPressMsg{Code: tea.KeyPgDown}`은 사용 안 함 (제거됨)
 - `StreamChunkMsg("token")`, `StreamReasoningMsg("token")`, `StreamDoneMsg{Err: err}`로 스트리밍 시뮬레이션
 - `stripANSI()`로 ANSI 이스케이프 제거 후 문자열 검증
 - `m.View().Content`로 View 문자열 검증 (v2 View()는 `tea.View` 반환)

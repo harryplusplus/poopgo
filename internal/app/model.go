@@ -70,8 +70,6 @@ type Model struct {
 
 var defaultCommands = []commandItem{
 	{"/help", "Show available commands"},
-	{"/scroll-up", "Page up"},
-	{"/scroll-down", "Page down"},
 	{"/scroll-top", "Scroll to top"},
 	{"/scroll-bottom", "Scroll to bottom"},
 }
@@ -170,6 +168,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			// Esc in normal mode is a no-op — only Ctrl+C quits
+
+			// Keyboard scrolling — route to viewport, not textarea.
+		// Mouse mode is off so the terminal handles native text selection.
+		// Up/Down scroll the chat history 1 line at a time.
+		case "up":
+			if !m.commandMode {
+				m.viewport.ScrollUp(1)
+				m.refreshViewport()
+				return m, nil
+			}
+
+		case "down":
+			if !m.commandMode {
+				m.viewport.ScrollDown(1)
+				m.refreshViewport()
+				return m, nil
+			}
 
 		case "enter":
 			if m.streaming {
@@ -296,7 +311,10 @@ func (m *Model) View() tea.View {
 
 	v := tea.NewView(content)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
+	// Mouse mode off: terminal handles native text selection (drag-to-select
+	// → clipboard via terminal's native copy: Cmd+C / Ctrl+Shift+C).
+	// Scroll via keyboard arrows (↑/↓/PgUp/PgDn) or slash commands.
+	v.MouseMode = tea.MouseModeNone
 	return v
 }
 
@@ -315,7 +333,7 @@ func (m *Model) statusLine() string {
 	if m.streaming {
 		left += " " + m.spinner.View() + " streaming"
 	}
-	right := "Ctrl+C quit"
+	right := "↑↓ scroll | Ctrl+C quit"
 	width := m.width
 	if width < len(left)+len(right)+2 {
 		width = len(left) + len(right) + 2
@@ -482,12 +500,6 @@ func (m *Model) executeCommand(input string) {
 			sb.WriteString(fmt.Sprintf("  %-20s %s\n", c.command, c.description))
 		}
 		m.appendSystem(sb.String())
-
-	case "/scroll-up":
-		m.viewport.PageUp()
-
-	case "/scroll-down":
-		m.viewport.PageDown()
 
 	case "/scroll-top":
 		m.viewport.GotoTop()

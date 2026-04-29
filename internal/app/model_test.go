@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -897,10 +898,10 @@ func TestViewportHeight_commandModeShrinksViewport(t *testing.T) {
 	m.textarea.SetValue("/")
 	m.updateCommandMode()
 
-	// Palette = header(1) + 5 commands + footer(1) = 7 extra lines
-	// height=30, overhead=5+7=12 → viewport height = 18
-	if m.viewport.Height() != 18 {
-		t.Errorf("viewport height should be 18 (30-5-7), got %d", m.viewport.Height())
+	// Palette = header(1) + 3 commands + footer(1) = 5 extra lines
+	// height=30, overhead=5+5=10 → viewport height = 20
+	if m.viewport.Height() != 20 {
+		t.Errorf("viewport height should be 20 (30-5-5), got %d", m.viewport.Height())
 	}
 	if !m.commandMode {
 		t.Error("should be in command mode")
@@ -930,8 +931,8 @@ func TestViewportHeight_commandModeEscRestoresHeight(t *testing.T) {
 	m.textarea.SetValue("/")
 	m.updateCommandMode()
 
-	if m.viewport.Height() != 18 {
-		t.Errorf("viewport height should be 18 in command mode, got %d", m.viewport.Height())
+	if m.viewport.Height() != 20 {
+		t.Errorf("viewport height should be 20 in command mode, got %d", m.viewport.Height())
 	}
 
 	// Esc should exit command mode and restore height
@@ -968,9 +969,9 @@ func TestViewportHeight_windowSizeInCommandMode(t *testing.T) {
 	// Now simulate a window resize while in command mode
 	_, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 50})
 
-	// Palette overhead = 5 + 7 = 12, viewport height = 50 - 12 = 38
-	if m.viewport.Height() != 38 {
-		t.Errorf("viewport height should be 38 (50-12) in command mode after resize, got %d", m.viewport.Height())
+	// Palette overhead = 5 + 5 = 10, viewport height = 50 - 10 = 40
+	if m.viewport.Height() != 40 {
+		t.Errorf("viewport height should be 40 (50-10) in command mode after resize, got %d", m.viewport.Height())
 	}
 	if m.width != 120 {
 		t.Errorf("width should be 120, got %d", m.width)
@@ -1038,6 +1039,125 @@ func TestViewportHeight_minimumHeight(t *testing.T) {
 	// Viewport height should be at least 1, not negative
 	if m.viewport.Height() < 1 {
 		t.Errorf("viewport height should be at least 1, got %d", m.viewport.Height())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard scrolling (issue #27 — native text selection)
+// ---------------------------------------------------------------------------
+
+// TestKeyboardScrollUp scrolls viewport up by 1 line in normal mode.
+func TestKeyboardScrollUp(t *testing.T) {
+	m := newTestModel()
+	m.viewport.SetHeight(10)
+	// Add enough messages to fill the viewport and scroll
+	for i := 0; i < 50; i++ {
+		m.messages = append(m.messages, Message{Role: "user", Content: fmt.Sprintf("line %d", i)})
+	}
+	m.refreshViewport()
+	m.viewport.GotoBottom() // start at bottom
+
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	// After pressing Up, viewport should have scrolled up
+	if m.viewport.AtBottom() {
+		t.Error("viewport should have scrolled up after pressing Up")
+	}
+}
+
+// TestKeyboardScrollDown scrolls viewport down by 1 line in normal mode.
+func TestKeyboardScrollDown(t *testing.T) {
+	m := newTestModel()
+	m.viewport.SetHeight(10)
+	for i := 0; i < 50; i++ {
+		m.messages = append(m.messages, Message{Role: "user", Content: fmt.Sprintf("line %d", i)})
+	}
+	m.refreshViewport()
+	m.viewport.GotoTop() // start at top
+
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	if m.viewport.AtTop() {
+		t.Error("viewport should have scrolled down after pressing Down")
+	}
+}
+
+// TestKeyboardPageUp removed: /scroll-up removed (Ghostty handles scrolling).
+// TestKeyboardPageDown removed: /scroll-down removed (Ghostty handles scrolling).
+
+// TestKeyboardScrollInCommandMode passes Up/Down through to command palette navigation.
+func TestKeyboardScrollInCommandMode(t *testing.T) {
+	m := newTestModel()
+	m.textarea.SetValue("/")
+	m.updateCommandMode()
+
+	// In command mode, Down should move selection, not scroll viewport
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	if m.selectedCmd != 1 {
+		t.Errorf("command mode: Down should move selection to 1, got %d", m.selectedCmd)
+	}
+
+	// Up should move selection back
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if m.selectedCmd != 0 {
+		t.Errorf("command mode: Up should move selection to 0, got %d", m.selectedCmd)
+	}
+}
+
+// TestViewMouseModeNone verifies that the View returns MouseModeNone for
+// native text selection support (issue #27).
+func TestViewMouseModeNone(t *testing.T) {
+	m := newTestModel()
+	v := m.View()
+	// MouseMode should be None (0), not CellMotion (1).
+	// When mouse mode is off, the terminal handles native text selection.
+	if v.MouseMode != tea.MouseModeNone {
+		t.Errorf("MouseMode should be None (native text selection), got %v", v.MouseMode)
+	}
+}
+
+// TestStatusLineShowsScrollHelp verifies the status line indicates
+// keyboard scrolling availability.
+func TestStatusLineShowsScrollHelp(t *testing.T) {
+	m := newTestModel()
+	s := stripANSI(m.statusLine())
+	if !strings.Contains(s, "scroll") {
+		t.Errorf("status line should mention scroll help: %s", s)
+	}
+	// Should not mention mouse wheel since mouse mode is off
+	if strings.Contains(strings.ToLower(s), "mouse") || strings.Contains(strings.ToLower(s), "wheel") {
+		t.Errorf("status line should not mention mouse wheel (mouse mode off): %s", s)
+	}
+}
+
+// TestUpDownNotBlockType prevents regression: Up/Down scroll the viewport
+// but typing regular characters still flows into the textarea.
+func TestKeyboardScrollDoesNotBlockTyping(t *testing.T) {
+	m := newTestModel()
+
+	// Scroll up first
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+
+	// Then type — should reach textarea
+	_, _ = m.Update(tea.KeyPressMsg{Text: "h"})
+	if m.textarea.Value() != "h" {
+		t.Errorf("typing after scrolling: expected 'h', got %q", m.textarea.Value())
+	}
+}
+
+// TestKeyboardScrollWhileStreaming still scrolls (streaming doesn't block
+// viewport interaction).
+func TestKeyboardScrollWhileStreaming(t *testing.T) {
+	m := newTestModel()
+	m.streaming = true
+	m.viewport.SetHeight(10)
+	for i := 0; i < 50; i++ {
+		m.messages = append(m.messages, Message{Role: "user", Content: fmt.Sprintf("line %d", i)})
+	}
+	m.refreshViewport()
+	m.viewport.GotoBottom()
+
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if m.viewport.AtBottom() {
+		t.Error("viewport should scroll even while streaming")
 	}
 }
 
