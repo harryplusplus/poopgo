@@ -92,11 +92,10 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - Reasoning models (o1, o3 등)은 SSE delta에 `reasoning_content` 필드를 함께 반환
 - `Message.ReasoningContent`는 `json:"-"`로 API 요청에서 제외 (reasoning은 API로 다시 보내지 않음)
 - `chatRequest.ReasoningEffort`는 `json:"reasoning_effort,omitempty"` — 빈 값이면 JSON에서 생략
-- `refreshViewport()`에서 reasoning content는 이탤릭(ANSI `\033[3m`...`\033[23m`)으로 렌더링, `💭 Reasoning` 헤더 포함
+- `refreshViewport()`에서 reasoning content는 `ansi.Style{}.Italic(true).Styled()`로 이탤릭 렌더링, `💭 Reasoning` 헤더는 `sysStyle.Render()`로 노란색. `ansi.Style.Styled()`는 block 패딩이 없어 `\n\n` 개행 구조를 보존함 (#18).
 - `StreamReasoningMsg` → Update에서 `StreamChunkMsg`와 동일한 패턴으로 처리 (assistant 슬롯의 `ReasoningContent` 누적)
-- lipgloss v2도 `Italic()` 미지원이므로 raw ANSI escape 사용
-- **중요**: reasoning content에 `sysStyle.Render()`를 적용하지 말 것. lipgloss v2는 멀티라인 `Render()` 호출 시 각 줄을 최대 너비로 공백 패딩하여 빈 줄이 사라지고 `\n\n` 패턴이 깨짐 (#18).
-- **중요**: reasoning content는 `collapseNewlines()`로 연속 `\n`을 최대 2개로 축소 후 렌더링. 실제 reasoning model 출력은 문단 사이에 6~7개 연속 개행을 포함할 수 있으며, 이를 1개 빈 줄(`\n\n`)로 정규화.
+- **중요**: reasoning content에 `sysStyle.Render()`를 적용하지 말 것. lipgloss v2 `Render()`는 멀티라인 각 줄을 최대 너비로 공백 패딩하여 빈 줄이 사라지고 `\n\n` 패턴이 깨짐 (#18).
+- **중요**: reasoning content는 `collapseNewlines()`로 연속 `\n`을 최대 2개로 축소 후 렌더링 (방어적).
 
 ### View (v2 Declarative)
 - `View()`는 `tea.View`를 반환 — `tea.NewView(content)`로 생성
@@ -126,12 +125,32 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - Pattern: build `[]string` lines, join with `"\n"`, wrap in `panelStyle.Render()` — lipgloss inner bg overrides outer per cell, ANSI reset resumes outer
 - Regression test: verify exact ANSI sequences (`48;5;236` for panel bg, `97;100m` for selected) — lipgloss renders 0-15 colors as basic SGR codes, not 256-color format
 
+## Library Usage Guidelines
+
+**모르는 라이브러리는 반드시 소스코드와 문서를 확인할 것.** 함수 몇 개만으로 대충 구현하지 말고, 라이브러리 설계 의도에 맞게 쓸 것.
+
+- `charm.land/lipgloss/v2` — [README](https://github.com/charmbracelet/lipgloss), [pkg.go.dev](https://pkg.go.dev/charm.land/lipgloss/v2), `style.go` 소스
+- `charm.land/bubbles/v2` — [pkg.go.dev](https://pkg.go.dev/charm.land/bubbles/v2), 각 컴포넌트 소스
+- `charm.land/bubbletea/v2` — [pkg.go.dev](https://pkg.go.dev/charm.land/bubbletea/v2), `tea.go` 소스
+- `github.com/charmbracelet/x/ansi` — [pkg.go.dev](https://pkg.go.dev/github.com/charmbracelet/x/ansi), 저수준 ANSI 스타일링
+
+### lipgloss Style.Render() vs ansi.Style.Styled()
+
+| | `lipgloss.Style.Render()` | `ansi.Style.Styled()` |
+|---|---|---|
+| 용도 | Block 레이아웃 (padding, margin, border, align) | Inline 텍스트 스타일링 |
+| 멀티라인 | 모든 줄을 최대 너비로 공백 패딩 → `\n\n` 파괴 | `\n` 보존, 순수 ANSI escape만 적용 |
+| 사용처 | 헤더, 패널, 경계선 있는 UI 요소 | 채팅 메시지 본문, 개행 구조 보존이 중요한 콘텐츠 |
+
+**결론**: 개행 구조를 보존해야 하는 멀티라인 콘텐츠에는 `ansi.Style.Styled()`를 사용할 것.
+
 ## Dependencies
 | Module | Version | Usage |
 |---|---|---|
 | `charm.land/bubbletea/v2` | v2.0.6 | Elm 아키텍처 TUI 프레임워크 (v2 — Kitty Keyboard Protocol 네이티브 지원, declarative View) |
 | `charm.land/bubbles/v2` | v2.1.0 | textarea, viewport, spinner 컴포넌트 |
-| `charm.land/lipgloss/v2` | v2.0.3 | 스타일링 |
+| `charm.land/lipgloss/v2` | v2.0.3 | 스타일링 (block layout) |
+| `github.com/charmbracelet/x/ansi` | (lipgloss 의존성) | 저수준 ANSI 스타일링 (inline — 개행 보존) |
 
 ## Known Constraints
 - **Shift+Enter 네이티브 지원**: Bubble Tea v2로 마이그레이션하여 Kitty Keyboard Protocol 네이티브 지원. `Alt+Enter`는 제거됨. `tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}`로 감지.
@@ -139,8 +158,8 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - **키보드 스크롤**: ↑/↓ 키로 1줄씩 스크롤 (viewport.ScrollUp/ScrollDown). command mode에서는 palette 내비게이션으로 전환.
 - **Viewport KeyMap은 비어 있음** (`viewport.KeyMap{}`) → viewport 자체 키바인딩 없음. 스크롤은 Model.Update에서 ↑/↓를 직접 인터셉트.
 - **Viewport SoftWrap 활성화**: `SoftWrap = true`로 설정되어 viewport 폭을 넘는 긴 줄은 자동으로 줄바꿈됨. `bubbles/v2` viewport는 기본값 `SoftWrap = false`이며, false일 경우 `ansi.Cut()`으로 초과분을 잘라내 가로스크롤을 의도하지만 KeyMap이 비어 있어 접근 불가능하므로 반드시 true로 설정해야 함. SoftWrap은 `ansi.Cut(line, idx, maxWidth+idx)`로 문자 단위 분할하며, ANSI escape sequence를 올바르게 처리함.
-- **lipgloss v2 `Style.Render()` 멀티라인 패딩**: lipgloss v2의 `Render()`는 멀티라인 문자열의 각 줄을 최대 너비로 공백 패딩한다. `\n\n` 패턴이 `\n<spaces>\n`으로 변형되어 빈 줄 감지가 깨지므로, reasoning content처럼 정확한 개행 구조가 중요한 콘텐츠에는 `Render()`를 사용하지 말 것 (#18).
-- **Reasoning content 연속 개행 정규화**: `collapseNewlines()`로 렌더링 전에 연속 `\n`을 최대 2개로 축소. 실제 reasoning model (DeepSeek, o1 등)의 chain-of-thought 출력은 문단 사이에 과도한 개행(6~7개)을 포함함.
+- **lipgloss v2 `Style.Render()` 멀티라인 패딩**: lipgloss v2의 `Render()`는 멀티라인 문자열의 각 줄을 최대 너비로 공백 패딩한다. `\n\n` 패턴이 `\n<spaces>\n`으로 변형되어 빈 줄 감지가 깨지므로, 개행 구조가 중요한 콘텐츠에는 `ansi.Style.Styled()`를 대신 사용할 것 (#18). `ansi.Style`은 순수 인라인 스타일링만 적용한다.
+- **Reasoning content 연속 개행 정규화**: `collapseNewlines()`로 렌더링 전에 연속 `\n`을 최대 2개로 축소 (방어적).
 - **TUI 테스트 한계**: `tea.Program.Run()`은 실제 터미널 필요. Model.Update에 KeyPressMsg 직접 주입하는 방식으로 키 입력 테스트.
 
 ## Testing Guidelines
@@ -157,7 +176,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `StreamChunkMsg("token")`, `StreamReasoningMsg("token")`, `StreamDoneMsg{Err: err}`로 스트리밍 시뮬레이션
 - `stripANSI()`로 ANSI 이스케이프 제거 후 문자열 검증 — `GetContent()`에서 ANSI 코드가 개행 사이에 끼어 `\n\n` 패턴을 직접 찾을 수 없으므로 반드시 stripANSI 선적용
 - `m.View().Content`로 View 문자열 검증 (v2 View()는 `tea.View` 반환)
-- Reasoning rendering 테스트 시 `\033[3m` (italic on), `\033[23m` (italic off) escape 포함 여부 확인
+- Reasoning rendering 테스트 시 `\033[3m` (italic on), `\033[m` (SGR reset) escape 포함 여부 확인 (`ansi.Style{}.Italic(true)` 사용)
 - `NewModel`의 `reasoningEffort`, `temperature` 파라미터로 설정 테스트
 - Viewport SoftWrap 테스트: `m.viewport.SoftWrap`이 true인지 확인. `SetWidth(20)` 같은 좁은 폭에서 긴 문자열로 `refreshViewport()` 후 `m.viewport.TotalLineCount() > 1` 확인 (줄바꿈 발생). `m.viewport.GetContent()`로 전체 콘텐츠 보존 여부 확인.
 - `newTestModel()` 헬퍼는 FakeProvider 사용, `NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", NewFakeProvider())` — `reasoningEffort`, `temperature`는 빈 문자열 (6개 인자)

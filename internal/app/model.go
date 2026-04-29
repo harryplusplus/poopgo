@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // commandItem is a single entry in the slash-command palette.
@@ -25,9 +26,8 @@ var (
 	userStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
 	aiStyle         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	sysStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	italicOn        = "\033[3m"
-	italicOff       = "\033[23m"
 	reasoningHeader = "💭 Reasoning"
+	italicStyle     = ansi.Style{}.Italic(true) // inline italic — no block padding
 )
 
 // ---------------------------------------------------------------------------
@@ -402,14 +402,12 @@ func (m *Model) refreshViewport() {
 			if msg.ReasoningContent != "" {
 				sb.WriteString(sysStyle.Render(reasoningHeader))
 				sb.WriteString("\n")
-				sb.WriteString(italicOn)
-				// Do NOT wrap reasoning content in lipgloss Style.Render().
-				// lipgloss v2 pads each line to max width with spaces,
-				// which replaces empty lines with space-padded lines and
-				// breaks \n\n paragraph detection (issue #18).
-				// Also collapse excessive consecutive newlines (defensive).
-				sb.WriteString(collapseNewlines(msg.ReasoningContent))
-				sb.WriteString(italicOff)
+				// Use ansi.Style for inline italic formatting.
+				// lipgloss Style.Render() applies block formatting (line-width
+				// padding) which destroys \n\n paragraph breaks (issue #18).
+				// ansi.Style.Styled() is pure inline styling — no padding.
+				// Collapse excessive consecutive newlines (defensive).
+				sb.WriteString(italicStyle.Styled(collapseNewlines(msg.ReasoningContent)))
 				sb.WriteString("\n")
 			}
 			sb.WriteString(msg.Content + "\n")

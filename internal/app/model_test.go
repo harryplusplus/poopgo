@@ -655,12 +655,13 @@ func TestRefreshViewport_reasoningRendered(t *testing.T) {
 	if !strings.Contains(content, "Hello") {
 		t.Error("missing regular content")
 	}
-	// Italic ANSI escapes should be present (\033[3m ... \033[23m)
+	// Italic ANSI escape should be present (ansi.Style{}.Italic(true) → \033[3m...\033[m)
 	if !strings.Contains(content, "\033[3m") {
 		t.Error("missing italic-on escape")
 	}
-	if !strings.Contains(content, "\033[23m") {
-		t.Error("missing italic-off escape")
+	// ansi.Style uses SGR reset (\033[m), not specific italic-off (\033[23m)
+	if !strings.Contains(content, "\033[m") {
+		t.Error("missing SGR reset escape")
 	}
 }
 
