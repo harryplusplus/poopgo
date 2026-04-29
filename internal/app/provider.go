@@ -12,13 +12,14 @@ import (
 )
 
 // StreamProvider abstracts the LLM streaming API call.
-// It sends messages to an LLM, invokes onToken for each content delta and
-// onReasoningToken for each reasoning_content delta (reasoning models only).
+// It sends messages to an LLM, invokes onToken for each content delta,
+// onReasoningToken for each reasoning_content delta (reasoning models only),
+// and onToolCall for each tool_calls delta (function calling).
 // reasoningEffort controls reasoning depth ("low", "medium", "high"); empty means disabled.
 // temperature sets the sampling temperature (0.0-2.0); empty means API default.
 // ctx allows the caller to cancel the stream (e.g., on Esc keypress).
 type StreamProvider interface {
-	Stream(ctx context.Context, messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error
+	Stream(ctx context.Context, messages []Message, model string, onToken, onReasoningToken func(string), onToolCall func(index int, id, name, argsChunk string), reasoningEffort, temperature string) error
 }
 
 // ---------------------------------------------------------------------------
@@ -38,7 +39,7 @@ func NewRealProvider(apiKey, baseURL string) *RealProvider {
 
 // Stream implements StreamProvider by POSTing to the chat completions endpoint
 // and parsing the SSE response stream.
-func (p *RealProvider) Stream(ctx context.Context, messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error {
+func (p *RealProvider) Stream(ctx context.Context, messages []Message, model string, onToken, onReasoningToken func(string), onToolCall func(index int, id, name, argsChunk string), reasoningEffort, temperature string) error {
 	payload := chatRequest{
 		Model:           model,
 		Messages:        messages,
@@ -77,7 +78,7 @@ func (p *RealProvider) Stream(ctx context.Context, messages []Message, model str
 		return fmt.Errorf("API returned %d: %s", resp.StatusCode, string(errBody))
 	}
 
-	return parseSSEStream(resp.Body, onToken, onReasoningToken)
+	return parseSSEStream(resp.Body, onToken, onReasoningToken, onToolCall)
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +98,8 @@ func NewFakeProvider() *FakeProvider {
 // fake-provider banner. If reasoningEffort is set, emits fake reasoning tokens
 // first. Temperature is echoed but not applied. Each character is emitted as
 // a separate token to exercise the streaming path.
-func (p *FakeProvider) Stream(ctx context.Context, messages []Message, model string, onToken, onReasoningToken func(string), reasoningEffort, temperature string) error {
+// onToolCall is accepted but ignored (FakeProvider does not emit tool calls).
+func (p *FakeProvider) Stream(ctx context.Context, messages []Message, model string, onToken, onReasoningToken func(string), onToolCall func(index int, id, name, argsChunk string), reasoningEffort, temperature string) error {
 	// Emit fake reasoning if reasoningEffort is set
 	if reasoningEffort != "" && onReasoningToken != nil {
 		reasoning := "🤔 [FAKE REASONING] Thinking with effort=" + reasoningEffort + "... "

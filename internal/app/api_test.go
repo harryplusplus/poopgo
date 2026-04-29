@@ -17,7 +17,7 @@ func TestParseSSEStream_singleChunk(t *testing.T) {
 	var tokens []string
 	err := parseSSEStream(strings.NewReader(input), func(tok string) {
 		tokens = append(tokens, tok)
-	}, nil)
+	}, nil, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -36,7 +36,7 @@ func TestParseSSEStream_multipleChunks(t *testing.T) {
 	var tokens []string
 	err := parseSSEStream(strings.NewReader(input), func(tok string) {
 		tokens = append(tokens, tok)
-	}, nil)
+	}, nil, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -53,7 +53,7 @@ func TestParseSSEStream_emptyDelta(t *testing.T) {
 	var tokens []string
 	err := parseSSEStream(strings.NewReader(input), func(tok string) {
 		tokens = append(tokens, tok)
-	}, nil)
+	}, nil, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -71,7 +71,7 @@ func TestParseSSEStream_malformedJSON(t *testing.T) {
 	var tokens []string
 	err := parseSSEStream(strings.NewReader(input), func(tok string) {
 		tokens = append(tokens, tok)
-	}, nil)
+	}, nil, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -88,7 +88,7 @@ func TestParseSSEStream_noChoices(t *testing.T) {
 	var tokens []string
 	err := parseSSEStream(strings.NewReader(input), func(tok string) {
 		tokens = append(tokens, tok)
-	}, nil)
+	}, nil, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -104,7 +104,7 @@ func TestParseSSEStream_noDone(t *testing.T) {
 	var tokens []string
 	err := parseSSEStream(strings.NewReader(input), func(tok string) {
 		tokens = append(tokens, tok)
-	}, nil)
+	}, nil, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -175,7 +175,7 @@ func TestParseSSEStream_reasoningContent(t *testing.T) {
 	var reasoningTokens []string
 	err := parseSSEStream(strings.NewReader(input), nil, func(tok string) {
 		reasoningTokens = append(reasoningTokens, tok)
-	})
+	}, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -197,6 +197,7 @@ func TestParseSSEStream_contentAndReasoningInterleaved(t *testing.T) {
 	err := parseSSEStream(strings.NewReader(input),
 		func(tok string) { contentTokens = append(contentTokens, tok) },
 		func(tok string) { reasoningTokens = append(reasoningTokens, tok) },
+		nil,
 	)
 
 	if err != nil {
@@ -217,7 +218,7 @@ func TestParseSSEStream_reasoningEmptyIgnored(t *testing.T) {
 	var reasoningTokens []string
 	err := parseSSEStream(strings.NewReader(input), nil, func(tok string) {
 		reasoningTokens = append(reasoningTokens, tok)
-	})
+	}, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -395,5 +396,141 @@ func TestChatRequestMarshalOmitemptyReasoningEffort(t *testing.T) {
 
 	if strings.Contains(string(data), "reasoning_effort") {
 		t.Errorf("reasoning_effort should be omitted when empty: %s", string(data))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tool call SSE parsing
+// ---------------------------------------------------------------------------
+
+func TestParseSSEStream_toolCall(t *testing.T) {
+	input := `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Seoul\"}"}}]}}]}` + "\n" +
+		`data: [DONE]` + "\n"
+
+	var toolCalls []struct {
+		index    int
+		id       string
+		name     string
+		args     string
+	}
+	err := parseSSEStream(strings.NewReader(input), nil, nil, func(index int, id, name, argsChunk string) {
+		toolCalls = append(toolCalls, struct {
+			index    int
+			id       string
+			name     string
+			args     string
+		}{index, id, name, argsChunk})
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(toolCalls) != 1 {
+		t.Fatalf("expected 1 tool call delta, got %d", len(toolCalls))
+	}
+	tc := toolCalls[0]
+	if tc.id != "call_123" {
+		t.Errorf("id = %q, want call_123", tc.id)
+	}
+	if tc.name != "get_weather" {
+		t.Errorf("name = %q, want get_weather", tc.name)
+	}
+	if tc.args != `{"city":"Seoul"}` {
+		t.Errorf("args = %q", tc.args)
+	}
+}
+
+func TestParseSSEStream_toolCallStreamingArgs(t *testing.T) {
+	// Simulate streaming tool call where arguments arrive in fragments
+	input := `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_456","type":"function","function":{"name":"get_weather"}}]}}]}` + "\n" +
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]}}]}` + "\n" +
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Seoul\""}}]}}]}` + "\n" +
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]}}]}` + "\n" +
+		`data: [DONE]` + "\n"
+
+	var id, name, args string
+	err := parseSSEStream(strings.NewReader(input), nil, nil, func(index int, idChunk, nameChunk, argsChunk string) {
+		if idChunk != "" {
+			id = idChunk
+		}
+		if nameChunk != "" {
+			name = nameChunk
+		}
+		args += argsChunk
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "call_456" {
+		t.Errorf("id = %q", id)
+	}
+	if name != "get_weather" {
+		t.Errorf("name = %q", name)
+	}
+	if args != `{"city":"Seoul"}` {
+		t.Errorf("args = %q", args)
+	}
+}
+
+func TestParseSSEStream_toolCallNoOnToolCall(t *testing.T) {
+	// Tool call SSE should not panic when onToolCall is nil
+	input := `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_x","type":"function","function":{"name":"f"}}]}}]}` + "\n" +
+		`data: [DONE]` + "\n"
+
+	err := parseSSEStream(strings.NewReader(input), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// chatRequest with tools
+// ---------------------------------------------------------------------------
+
+func TestChatRequestMarshalWithTools(t *testing.T) {
+	req := chatRequest{
+		Model: "gpt-4o",
+		Messages: []Message{{Role: "user", Content: "weather in Seoul?"}},
+		Stream:  true,
+		Tools: []Tool{
+			{
+				Type: "function",
+				Function: ToolFunction{
+					Name:        "get_weather",
+					Description: "Get current weather",
+					Parameters:  map[string]any{"type": "object", "properties": map[string]any{"city": map[string]any{"type": "string"}}},
+				},
+			},
+		},
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if !strings.Contains(string(data), `"tools"`) {
+		t.Errorf("missing tools in JSON: %s", string(data))
+	}
+	if !strings.Contains(string(data), `"get_weather"`) {
+		t.Errorf("missing function name in JSON: %s", string(data))
+	}
+}
+
+func TestChatRequestMarshalOmitemptyTools(t *testing.T) {
+	req := chatRequest{
+		Model:    "gpt-4o",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+		Stream:   true,
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if strings.Contains(string(data), "tools") {
+		t.Errorf("tools should be omitted when empty: %s", string(data))
 	}
 }

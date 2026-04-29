@@ -804,6 +804,7 @@ func TestFakeProvider_temperatureEchoed(t *testing.T) {
 		"gpt-4o",
 		func(tok string) { contentTokens = append(contentTokens, tok) },
 		nil,
+		nil,
 		"",
 		"0.7",
 	)
@@ -873,6 +874,7 @@ func TestFakeProvider_temperatureNotEchoedWhenEmpty(t *testing.T) {
 		[]Message{{Role: "user", Content: "hello"}},
 		"gpt-4o",
 		func(tok string) { contentTokens = append(contentTokens, tok) },
+		nil,
 		nil,
 		"",
 		"",
@@ -1245,7 +1247,7 @@ func endToEndStreamReasoning(t *testing.T, userMsg string, reasoningEffort strin
 	onReasoningToken := func(token string) {
 		_, _ = m.Update(StreamReasoningMsg(token))
 	}
-	err := m.provider.Stream(context.Background(), nonStreamingMessages, m.chatModel, onToken, onReasoningToken, m.reasoningEffort, m.temperature)
+	err := m.provider.Stream(context.Background(), nonStreamingMessages, m.chatModel, onToken, onReasoningToken, nil, m.reasoningEffort, m.temperature)
 	if err != nil {
 		t.Fatalf("provider.Stream: %v", err)
 	}
@@ -1532,6 +1534,7 @@ func TestCancelStreaming_fakeProviderRespectsCancel(t *testing.T) {
 		"gpt-4o",
 		onToken,
 		nil,
+		nil,
 		"",
 		"",
 	)
@@ -1546,6 +1549,126 @@ func TestCancelStreaming_fakeProviderRespectsCancel(t *testing.T) {
 	full := strings.Join(tokens, "")
 	if strings.Contains(full, "POOPGO_PROVIDER=fake") {
 		t.Error("fake provider should not emit full response after cancel")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tool call streaming + rendering (issue #23)
+// ---------------------------------------------------------------------------
+
+func TestUpdate_streamToolCallMsg(t *testing.T) {
+	m := newTestModel()
+	m.messages = []Message{
+		{Role: "user", Content: "weather in Seoul?"},
+		{Role: "assistant", Content: "", ReasoningContent: ""},
+	}
+	m.streaming = true
+
+	// Simulate streaming tool call deltas
+	_, _ = m.Update(StreamToolCallMsg{Index: 0, ID: "call_001", FunctionName: "get_weather"})
+	_, _ = m.Update(StreamToolCallMsg{Index: 0, Arguments: `{"city":`})
+	_, _ = m.Update(StreamToolCallMsg{Index: 0, Arguments: `"Seoul"}`})
+
+	if len(m.messages[1].ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(m.messages[1].ToolCalls))
+	}
+	tc := m.messages[1].ToolCalls[0]
+	if tc.ID != "call_001" {
+		t.Errorf("ID = %q", tc.ID)
+	}
+	if tc.Function.Name != "get_weather" {
+		t.Errorf("Name = %q", tc.Function.Name)
+	}
+	if tc.Function.Arguments != `{"city":"Seoul"}` {
+		t.Errorf("Arguments = %q", tc.Function.Arguments)
+	}
+}
+
+func TestUpdate_streamToolCallMsgMultiIndex(t *testing.T) {
+	m := newTestModel()
+	m.messages = []Message{
+		{Role: "user", Content: "get weather and time"},
+		{Role: "assistant", Content: ""},
+	}
+	m.streaming = true
+
+	// Two simultaneous tool calls
+	_, _ = m.Update(StreamToolCallMsg{Index: 0, ID: "call_a", FunctionName: "get_weather"})
+	_, _ = m.Update(StreamToolCallMsg{Index: 0, Arguments: `"Seoul"`})
+	_, _ = m.Update(StreamToolCallMsg{Index: 1, ID: "call_b", FunctionName: "get_time"})
+	_, _ = m.Update(StreamToolCallMsg{Index: 1, Arguments: `"UTC"`})
+
+	if len(m.messages[1].ToolCalls) != 2 {
+		t.Fatalf("expected 2 tool calls, got %d", len(m.messages[1].ToolCalls))
+	}
+	// orderedToolCalls sorts by index
+	if m.messages[1].ToolCalls[0].Function.Name != "get_weather" {
+		t.Errorf("index 0 name = %q", m.messages[1].ToolCalls[0].Function.Name)
+	}
+	if m.messages[1].ToolCalls[1].Function.Name != "get_time" {
+		t.Errorf("index 1 name = %q", m.messages[1].ToolCalls[1].Function.Name)
+	}
+}
+
+func TestRefreshViewport_toolCallRendered(t *testing.T) {
+	m := newTestModel()
+	m.messages = []Message{
+		{Role: "user", Content: "weather?"},
+		{Role: "assistant", Content: "Let me check.",
+			ToolCalls: []ToolCall{
+				{ID: "call_001", Type: "function", Function: ToolCallFunction{Name: "get_weather", Arguments: `{"city":"Seoul"}`}},
+			},
+		},
+	}
+	m.refreshViewport()
+	content := stripANSI(m.viewport.View())
+
+	if !strings.Contains(content, "🔧 get_weather") {
+		t.Error("viewport missing tool call rendering")
+	}
+	if !strings.Contains(content, `{"city":"Seoul"}`) {
+		t.Error("viewport missing tool call arguments")
+	}
+	// Regular content should still be present
+	if !strings.Contains(content, "Let me check.") {
+		t.Error("viewport missing regular assistant content")
+	}
+}
+
+func TestRefreshViewport_toolCallWithoutArgs(t *testing.T) {
+	m := newTestModel()
+	m.messages = []Message{
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", Content: "",
+			ToolCalls: []ToolCall{
+				{ID: "call_x", Type: "function", Function: ToolCallFunction{Name: "ping", Arguments: ""}},
+			},
+		},
+	}
+	m.refreshViewport()
+	content := stripANSI(m.viewport.View())
+
+	if !strings.Contains(content, "🔧 ping") {
+		t.Error("viewport should render tool call without args")
+	}
+}
+
+func TestStreamingDoneClearsAssistantToolCalls(t *testing.T) {
+	m := newTestModel()
+	m.streaming = true
+	m.messages = []Message{
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", Content: ""},
+	}
+	m.assistantToolCalls = map[int]*ToolCall{
+		0: {ID: "call_x", Function: ToolCallFunction{Name: "f"}},
+	}
+
+	// StreamDoneMsg should clear the accumulation map
+	_, _ = m.Update(StreamDoneMsg{})
+
+	if m.assistantToolCalls != nil {
+		t.Error("assistantToolCalls should be cleared on StreamDoneMsg")
 	}
 }
 

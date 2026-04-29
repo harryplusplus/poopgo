@@ -46,7 +46,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 | `cmd/poopgo/main.go` | 진입점 — provider 선택, Bubble Tea Program 생성 |
 | `internal/app/model.go` | 메인 Model — viewport, textarea, messages, command palette, spinner, Update/View |
 | `internal/app/model_test.go` | Model 단위 테스트 — 키 입력, 메시지 흐름, 스트리밍, 커맨드 팔레트 |
-| `internal/app/api.go` | 타입 정의 (Message, chatRequest, streamChunk) + SSE 파싱 (content + reasoning_content) |
+| `internal/app/api.go` | 타입 정의 (Message, chatRequest, ToolCall, streamChunk) + SSE 파싱 (content + reasoning_content + tool_calls) |
 | `internal/app/api_test.go` | SSE 파싱 + JSON 직렬화 테스트 |
 | `internal/app/provider.go` | StreamProvider 인터페이스 + RealProvider + FakeProvider |
 
@@ -59,6 +59,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 | `POOPGO_PROVIDER` | *(empty → RealProvider)* | `"fake"` → FakeProvider |
 | `POOPGO_REASONING_EFFORT` | *(empty → disabled)* | Reasoning depth: `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` (reasoning models only) |
 | `POOPGO_TEMPERATURE` | *(empty → API default)* | Sampling temperature `0.0`–`2.0` (e.g., `"0.7"`) |
+| `POOPGO_TOOLS` | *(empty → disabled)* | JSON array of tool function definitions (not yet wired) |
 
 ## Key Patterns
 
@@ -125,7 +126,20 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `refreshViewport()`에서 reasoning content는 `ansi.Style{}.Italic(true).Styled()`로 이탤릭 렌더링, `💭 Reasoning` 헤더는 `sysStyle.Render()`로 노란색. `ansi.Style.Styled()`는 block 패딩이 없어 `\n\n` 개행 구조를 보존함 (#18).
 - `StreamReasoningMsg` → Update에서 `StreamChunkMsg`와 동일한 패턴으로 처리 (assistant 슬롯의 `ReasoningContent` 누적)
 - **중요**: reasoning content에 `sysStyle.Render()`를 적용하지 말 것. lipgloss v2 `Render()`는 멀티라인 각 줄을 최대 너비로 공백 패딩하여 빈 줄이 사라지고 `\n\n` 패턴이 깨짐 (#18).
-- **중요**: reasoning content는 `collapseNewlines()`로 연속 `\n`을 최대 2개로 축소 후 렌더링 (방어적).
+- **중요**: reasoning content의 모든 개행은 그대로 보존 (ansi.Style은 순수 인라인).
+
+### Tool Call Support (#23)
+- `Message.ToolCalls` — 모델이 요청한 함수 호출 정보. `json:"tool_calls,omitempty"`로 직렬화.
+- `Message.ToolCallID` — `role:"tool"`일 때 결과를 반환할 tool_call ID.
+- `chatRequest.Tools` — 사용 가능한 함수 정의 목록. `json:"tools,omitempty"`.
+- `StreamToolCallMsg` — SSE delta의 tool_calls 파편을 전달하는 tea.Msg. Index, ID, FunctionName, Arguments 필드 포함.
+- `parseSSEStream()` — delta의 `tool_calls` 배열을 순회하며 `onToolCall(index, id, name, argsChunk)` 콜백 호출.
+- Model의 `assistantToolCalls map[int]*ToolCall` — 스트리밍 중 tool call 파편을 index별로 누적.
+- `StreamToolCallMsg` 수신 시 map 업데이트 → `orderedToolCalls()`로 정렬 후 마지막 assistant 메시지의 `ToolCalls`에 반영.
+- `StreamDoneMsg` 수신 시 `assistantToolCalls = nil`로 누적 map 초기화.
+- `refreshViewport()` — `msg.ToolCalls`를 순회하며 `🔧 functionName`과 arguments를 렌더링.
+- `Provider.Stream` 시그니처: `onToolCall func(index int, id, name, argsChunk string)` — FakeProvider는 무시(no-op).
+- 환경 변수 `POOPGO_TOOLS` — JSON 함수 정의 배열. 미구현 상태 (향후 PR에서).
 
 ### View (v2 Declarative)
 - `View()`는 `tea.View`를 반환 — `tea.NewView(content)`로 생성
@@ -212,6 +226,7 @@ OpenAI 호환 `/chat/completions` API와 SSE 스트리밍으로 동작.
 - `newTestModel()` 헬퍼는 FakeProvider 사용, `NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "", NewFakeProvider())` — `reasoningEffort`, `temperature`는 빈 문자열 (6개 인자)
 - Layout 테스트: `m.viewport.Height()`로 viewport 높이 검증. command mode 진입 시 `updateCommandMode()` 호출 후 `m.viewport.Height()`가 축소되었는지 확인. `exitCommandMode()` 후 원복 확인. `WindowSizeMsg`로 resize 시 command mode 상태 반영 확인.
 - **스트리밍 통합 테스트**: `endToEndStreamReasoning()` 헬퍼로 provider.Stream()을 동기 호출하고 토큰을 Update()에 직접 주입하여 전체 스트리밍 플로우 검증. goroutine 불필요.
+- **Tool call 테스트**: `StreamToolCallMsg{Index, ID, FunctionName, Arguments}`로 tool call delta 시뮬레이션. Index별 누적, `orderedToolCalls()` 정렬, viewport 렌더링 (`🔧 functionName`) 검증. `StreamDoneMsg` 수신 시 `assistantToolCalls` nil 초기화 확인.
 
 ## tmux 기반 TUI 통합 테스트
 

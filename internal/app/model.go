@@ -67,6 +67,10 @@ type Model struct {
 	// Called on Esc during streaming to abort the provider call.
 	cancel context.CancelFunc
 
+	// Tool call fragments accumulated during streaming, keyed by tool call index.
+	// Flushed to the last assistant message's ToolCalls on StreamDoneMsg.
+	assistantToolCalls map[int]*ToolCall
+
 	// Command palette (triggered by "/" at start)
 	commandMode      bool
 	commands         []commandItem
@@ -253,9 +257,34 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoBottom()
 		}
 
+	case StreamToolCallMsg:
+		if m.assistantToolCalls == nil {
+			m.assistantToolCalls = make(map[int]*ToolCall)
+		}
+		tc, ok := m.assistantToolCalls[msg.Index]
+		if !ok {
+			tc = &ToolCall{Type: "function"}
+			m.assistantToolCalls[msg.Index] = tc
+		}
+		if msg.ID != "" {
+			tc.ID = msg.ID
+		}
+		if msg.FunctionName != "" {
+			tc.Function.Name = msg.FunctionName
+		}
+		tc.Function.Arguments += msg.Arguments
+		// Sync accumulated tool calls to the last assistant message
+		n := len(m.messages)
+		if n > 0 && m.messages[n-1].Role == "assistant" {
+			m.messages[n-1].ToolCalls = orderedToolCalls(m.assistantToolCalls)
+			m.refreshViewport()
+			m.viewport.GotoBottom()
+		}
+
 	case StreamDoneMsg:
 		m.streaming = false
 		m.cancel = nil
+		m.assistantToolCalls = nil
 		m.textarea.Focus()
 		if msg.Err != nil && !errors.Is(msg.Err, context.Canceled) {
 			m.appendSystem(fmt.Sprintf("❌ Error: %v", msg.Err))
@@ -403,6 +432,15 @@ func (m *Model) refreshViewport() {
 			sb.WriteString(sysStyle.Render(msg.Content))
 			sb.WriteString("\n")
 		}
+		// Render tool calls if present
+		for _, tc := range msg.ToolCalls {
+			sb.WriteString(sysStyle.Render(fmt.Sprintf("🔧 %s", tc.Function.Name)))
+			sb.WriteString("\n")
+			if tc.Function.Arguments != "" {
+				sb.WriteString(tc.Function.Arguments)
+				sb.WriteString("\n")
+			}
+		}
 	}
 
 	m.viewport.SetContent(sb.String())
@@ -493,6 +531,18 @@ func (m *Model) exitCommandMode() {
 	m.applyLayout()
 }
 
+// orderedToolCalls converts the tool call accumulation map to a slice
+// sorted by index (ascending). This ensures deterministic rendering.
+func orderedToolCalls(m map[int]*ToolCall) []ToolCall {
+	out := make([]ToolCall, 0, len(m))
+	for i := 0; i < len(m); i++ {
+		if tc, ok := m[i]; ok {
+			out = append(out, *tc)
+		}
+	}
+	return out
+}
+
 // executeCommand runs a slash command locally.
 func (m *Model) executeCommand(input string) {
 	switch input {
@@ -574,6 +624,14 @@ func (m *Model) streamResponse() {
 	onReasoningToken := func(token string) {
 		m.program.Send(StreamReasoningMsg(token))
 	}
-	err := m.provider.Stream(ctx, m.messages[:len(m.messages)-1], m.chatModel, onToken, onReasoningToken, m.reasoningEffort, m.temperature)
+	onToolCall := func(index int, id, name, argsChunk string) {
+		m.program.Send(StreamToolCallMsg{
+			Index:        index,
+			ID:           id,
+			FunctionName: name,
+			Arguments:    argsChunk,
+		})
+	}
+	err := m.provider.Stream(ctx, m.messages[:len(m.messages)-1], m.chatModel, onToken, onReasoningToken, onToolCall, m.reasoningEffort, m.temperature)
 	m.program.Send(StreamDoneMsg{Err: err})
 }
