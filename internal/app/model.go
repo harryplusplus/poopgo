@@ -306,6 +306,12 @@ func (m *Model) View() tea.View {
 
 func (m *Model) statusLine() string {
 	left := fmt.Sprintf(" %s | %s", m.chatModel, m.apiBase)
+	if m.reasoningEffort != "" {
+		left += fmt.Sprintf(" | 💭%s", m.reasoningEffort)
+	}
+	if m.temperature != "" {
+		left += fmt.Sprintf(" | 🌡️%s", m.temperature)
+	}
 	if m.streaming {
 		left += " " + m.spinner.View() + " streaming"
 	}

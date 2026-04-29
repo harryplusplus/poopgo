@@ -127,6 +127,52 @@ func TestStatusLine_streaming(t *testing.T) {
 	}
 }
 
+func TestStatusLine_reasoningEffortShown(t *testing.T) {
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "high", "", NewFakeProvider())
+	m.width = 100
+	s := stripANSI(m.statusLine())
+	if !strings.Contains(s, "💭high") {
+		t.Errorf("status line missing reasoning effort indicator: %s", s)
+	}
+}
+
+func TestStatusLine_reasoningEffortNotShownWhenEmpty(t *testing.T) {
+	m := newTestModel()
+	s := stripANSI(m.statusLine())
+	if strings.Contains(s, "💭") {
+		t.Errorf("reasoning indicator should not appear when empty: %s", s)
+	}
+}
+
+func TestStatusLine_temperatureShown(t *testing.T) {
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "0.7", NewFakeProvider())
+	m.width = 100
+	s := stripANSI(m.statusLine())
+	if !strings.Contains(s, "🌡️0.7") {
+		t.Errorf("status line missing temperature indicator: %s", s)
+	}
+}
+
+func TestStatusLine_temperatureNotShownWhenEmpty(t *testing.T) {
+	m := newTestModel()
+	s := stripANSI(m.statusLine())
+	if strings.Contains(s, "🌡️") {
+		t.Errorf("temperature indicator should not appear when empty: %s", s)
+	}
+}
+
+func TestStatusLine_bothShown(t *testing.T) {
+	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "max", "0.7", NewFakeProvider())
+	m.width = 100
+	s := stripANSI(m.statusLine())
+	if !strings.Contains(s, "💭max") {
+		t.Errorf("status line missing reasoning effort: %s", s)
+	}
+	if !strings.Contains(s, "🌡️0.7") {
+		t.Errorf("status line missing temperature: %s", s)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Model Update
 // ---------------------------------------------------------------------------
