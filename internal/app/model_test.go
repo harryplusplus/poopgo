@@ -671,6 +671,67 @@ func TestNewModel_temperatureEmptyByDefault(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Viewport soft wrap (issue #20)
+// ---------------------------------------------------------------------------
+
+func TestViewport_softWrapEnabled(t *testing.T) {
+	m := newTestModel()
+	if !m.viewport.SoftWrap {
+		t.Error("viewport SoftWrap should be enabled by default")
+	}
+}
+
+func TestViewport_longLineWraps(t *testing.T) {
+	m := newTestModel()
+	// Set a narrow viewport
+	m.viewport.SetWidth(20)
+	m.viewport.SetHeight(10)
+
+	// Content with a line much wider than the viewport
+	longLine := "this is a very long line that should wrap to multiple lines in the viewport"
+	m.messages = []Message{
+		{Role: "assistant", Content: longLine},
+	}
+	m.refreshViewport()
+
+	// With SoftWrap enabled, TotalLineCount should be > 1 (the long line wraps)
+	totalLines := m.viewport.TotalLineCount()
+	if totalLines <= 1 {
+		t.Errorf("expected wrapped lines > 1, got totalLineCount=%d (content=%q)", totalLines, longLine)
+	}
+
+	// The full text should still appear in the viewport content (not truncated)
+	rawContent := m.viewport.GetContent()
+	if !strings.Contains(rawContent, "wrap to multiple lines") {
+		t.Error("content appears truncated; long line fragment missing")
+	}
+}
+
+func TestViewport_longLineVisible(t *testing.T) {
+	m := newTestModel()
+	m.viewport.SetWidth(30)
+	m.viewport.SetHeight(15)
+
+	longLine := "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	m.messages = []Message{
+		{Role: "user", Content: longLine},
+	}
+	m.refreshViewport()
+
+	view := m.viewport.View()
+	// With SoftWrap, we should see portions of the long line in the rendered output
+	// The entire string may be split across lines, but some portion must be visible
+	if !strings.Contains(view, "abcdefghij") {
+		t.Error("viewport View() doesn't contain the beginning of the long line")
+	}
+	// The end of the string should also be reachable (via scrolling or wrapping)
+	rawContent := m.viewport.GetContent()
+	if !strings.Contains(rawContent, "UVWXYZ") {
+		t.Error("end of long line is truncated from content")
+	}
+}
+
 func TestFakeProvider_temperatureEchoed(t *testing.T) {
 	m := NewModel("sk-test", "https://api.openai.com/v1", "gpt-4o", "", "0.7", "", NewFakeProvider())
 	m.width = 100

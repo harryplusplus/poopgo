@@ -98,6 +98,7 @@ func NewModel(apiKey, apiBase, chatModel, reasoningEffort, temperature, initErr 
 	// Viewport
 	vp := viewport.New()
 	vp.KeyMap = viewport.KeyMap{}
+	vp.SoftWrap = true // enable word wrapping; default false truncates long lines
 
 	// Spinner
 	s := spinner.New(spinner.WithSpinner(spinner.Dot))
